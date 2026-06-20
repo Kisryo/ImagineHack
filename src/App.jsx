@@ -26,6 +26,7 @@ import {
   summarizeBusinessImpact,
   summarizeRelationshipAdmin,
 } from "./engines.js";
+import { generateClientProfile } from "./services/openaiClient.js";
 import {
   completeTaskRow,
   createAuditLogRow,
@@ -54,6 +55,7 @@ const advisorRoutes = [
   ["/advisor/today", "Today"],
   ["/advisor/clients", "Clients"],
   ["/advisor/client", "Cockpit"],
+  ["/advisor/ai-profile", "AI Profile"],
   ["/advisor/actions", "Actions"],
   ["/advisor/partners", "Partners"],
   ["/advisor/learning", "Learning"],
@@ -781,7 +783,6 @@ function AdvisorExperience(props) {
             key={client.id}
             onClick={() => {
               selectClient(client.id);
-              navigate("/advisor/client");
             }}
             type="button"
           >
@@ -858,6 +859,15 @@ function AdvisorExperience(props) {
             nextActions={nextActions}
           />
         </div>
+      </div>
+    );
+  }
+
+  if (route === "/advisor/ai-profile") {
+    return (
+      <div className="page-stack">
+        {clientQueue}
+        <AIProfilePage activeClient={activeClient} consentLocked={consentLocked} />
       </div>
     );
   }
@@ -1311,6 +1321,7 @@ function ClientMemory({ activeClient }) {
                   <li key={item}>{item}</li>
                 ))}
               </ul>
+              <AIClientProfile activeClient={activeClient} />
             </>
           )}
         </div>
@@ -1330,6 +1341,279 @@ function ClientMemory({ activeClient }) {
           )}
         </div>
       </div>
+    </section>
+  );
+}
+
+const aiProfileStore = {
+  profiles: new Map(),
+  inflight: new Map(),
+  listeners: new Set(),
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  },
+  notify() {
+    this.listeners.forEach((listener) => listener());
+  },
+  get(clientId) {
+    return this.profiles.get(clientId);
+  },
+  isLoading(clientId) {
+    return this.inflight.has(clientId);
+  },
+  async generate(client) {
+    if (!client || this.inflight.has(client.id)) return;
+    const promise = generateClientProfile(client)
+      .then((result) => {
+        this.profiles.set(client.id, { result, error: "" });
+      })
+      .catch((err) => {
+        this.profiles.set(client.id, {
+          result: this.profiles.get(client.id)?.result,
+          error: err.message || "Failed to generate profile.",
+        });
+      })
+      .finally(() => {
+        this.inflight.delete(client.id);
+        this.notify();
+      });
+    this.inflight.set(client.id, promise);
+    this.notify();
+  },
+};
+
+function useClientProfile(activeClient) {
+  const [, force] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = aiProfileStore.subscribe(() => force((n) => n + 1));
+    return unsubscribe;
+  }, []);
+
+  const entry = activeClient ? aiProfileStore.get(activeClient.id) : undefined;
+  const loading = activeClient ? aiProfileStore.isLoading(activeClient.id) : false;
+
+  return {
+    profile: entry?.result,
+    loading,
+    error: entry?.error || "",
+    runAnalysis: () => aiProfileStore.generate(activeClient),
+  };
+}
+
+function renderListBlock(title, items) {
+  const list = (items ?? []).filter(Boolean);
+  if (list.length === 0) return null;
+  return (
+    <div>
+      <h5>{title}</h5>
+      <ul>
+        {list.map((item) => (
+          <li key={typeof item === "string" ? item : item.interest}>
+            {typeof item === "string" ? item : (
+              <>
+                <strong>{item.interest}</strong>
+                {item.evidence ? <span className="ai-evidence"> - {item.evidence}</span> : null}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function copyText(text) {
+  if (text && navigator.clipboard) {
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
+}
+
+function AIClientProfile({ activeClient }) {
+  const { profile, loading, error, runAnalysis } = useClientProfile(activeClient);
+
+  return (
+    <section className="ai-profile-card">
+      <header className="ai-profile-head">
+        <div>
+          <span className="ai-profile-eyebrow">AI Behavioural Profile</span>
+          <strong>Detailed personality and interest read for tailored outreach</strong>
+        </div>
+        <button className="primary-action" disabled={loading} onClick={runAnalysis} type="button">
+          {loading ? "Analyzing..." : profile ? "Regenerate" : "Generate with AI"}
+        </button>
+      </header>
+
+      {error && <p className="ai-profile-error">{error}</p>}
+
+      {!profile && !loading && !error && (
+        <p className="ai-profile-hint">
+          Generate a deep profile from this client's notes, timeline, life events and signals.
+          Open the AI Profile page in the side nav for the full view.
+        </p>
+      )}
+
+      {profile && (
+        <div className="ai-profile-body">
+          <p className="ai-profile-summary">{profile.detailedSummary || profile.summary}</p>
+
+          <div className="ai-profile-grid">
+            {renderListBlock("Personality traits", profile.personalityTraits)}
+            {renderListBlock("Core motivations", profile.coreMotivations)}
+            {renderListBlock("Likely interests", profile.inferredInterests)}
+            {renderListBlock("Lifestyle signals", profile.lifestyleSignals)}
+          </div>
+
+          {profile.communicationStyle && (
+            <div className="ai-profile-style">
+              <span>Communication style</span>
+              <strong>{profile.communicationStyle}</strong>
+            </div>
+          )}
+
+          {profile.telegramMessageSuggestion && (
+            <div className="ai-telegram-suggestion">
+              <div className="ai-telegram-head">
+                <span>Telegram tone draft</span>
+                <button
+                  className="secondary-action"
+                  onClick={() => copyText(profile.telegramMessageSuggestion)}
+                  type="button"
+                >
+                  Copy
+                </button>
+              </div>
+              <p>{profile.telegramMessageSuggestion}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AIProfilePage({ activeClient, consentLocked }) {
+  const { profile, loading, error, runAnalysis } = useClientProfile(activeClient);
+
+  if (!activeClient) {
+    return (
+      <section className="panel">
+        <PanelHeader title="AI Client Profile" meta="Deep personality and interest read" />
+        <p>Select a client from the priority queue above to generate a profile.</p>
+      </section>
+    );
+  }
+
+  if (consentLocked) {
+    return (
+      <section className="panel">
+        <PanelHeader title="AI Client Profile" meta="Blocked by consent" />
+        <div className="masked-state">
+          <strong>Consent refresh required</strong>
+          <p>
+            AI summaries are blocked until {displayClientName(activeClient)} refreshes consent. This
+            protects private notes, financial values and timeline data.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel ai-profile-page">
+      <PanelHeader
+        title={`AI Profile - ${displayClientName(activeClient)}`}
+        meta={`${activeClient.segment}${activeClient.tier ? ` - ${activeClient.tier} tier` : ""} - ${activeClient.consentStatus}`}
+      />
+
+      <div className="ai-profile-toolbar">
+        <div className="ai-profile-context">
+          <span>
+            {activeClient.occupation} - {activeClient.location} - Age {activeClient.age}
+          </span>
+          <small>
+            {activeClient.valueScore ? `Value ${activeClient.valueScore}/100 - ` : ""}
+            Engagement urgency {activeClient.engagementUrgency} - Care urgency {activeClient.careUrgency}
+          </small>
+        </div>
+        <button className="primary-action" disabled={loading} onClick={runAnalysis} type="button">
+          {loading ? "Analyzing client signals..." : profile ? "Regenerate profile" : "Generate AI profile"}
+        </button>
+      </div>
+
+      {error && <p className="ai-profile-error">{error}</p>}
+
+      {!profile && !loading && !error && (
+        <div className="ai-profile-empty">
+          <h4>What this page does</h4>
+          <p>
+            Reads every signal on this client - personality cues, interests, life events, timeline,
+            relationship notes, segment, and priority signals - then summarises a behavioural profile
+            you can use to tailor a Telegram message that feels personal.
+          </p>
+          <ul>
+            <li>Detailed personality and interest narrative</li>
+            <li>Lifestyle signals and core motivations</li>
+            <li>Topic hooks and gift ideas grounded in the timeline</li>
+            <li>Telegram tone guidance plus a ready-to-edit draft</li>
+          </ul>
+        </div>
+      )}
+
+      {profile && (
+        <div className="ai-profile-page-body">
+          <article className="ai-profile-summary-card">
+            <h4>Behavioural summary</h4>
+            <p>{profile.detailedSummary || profile.summary}</p>
+          </article>
+
+          <div className="ai-profile-grid wide">
+            {renderListBlock("Personality traits", profile.personalityTraits)}
+            {renderListBlock("Core motivations", profile.coreMotivations)}
+            {renderListBlock("Likely interests", profile.inferredInterests)}
+            {renderListBlock("Lifestyle signals", profile.lifestyleSignals)}
+            {renderListBlock("Topic hooks", profile.topicHooks)}
+            {renderListBlock("Gift ideas", profile.giftIdeas)}
+            {renderListBlock("Do", profile.doList)}
+            {renderListBlock("Avoid", profile.avoidList)}
+          </div>
+
+          {(profile.communicationStyle || profile.toneGuidance) && (
+            <div className="ai-profile-style-row">
+              {profile.communicationStyle && (
+                <div className="ai-profile-style">
+                  <span>Communication style</span>
+                  <strong>{profile.communicationStyle}</strong>
+                </div>
+              )}
+              {profile.toneGuidance && (
+                <div className="ai-profile-style">
+                  <span>Tone guidance</span>
+                  <strong>{profile.toneGuidance}</strong>
+                </div>
+              )}
+            </div>
+          )}
+
+          {profile.telegramMessageSuggestion && (
+            <div className="ai-telegram-suggestion large">
+              <div className="ai-telegram-head">
+                <span>Telegram-ready draft</span>
+                <button
+                  className="secondary-action"
+                  onClick={() => copyText(profile.telegramMessageSuggestion)}
+                  type="button"
+                >
+                  Copy draft
+                </button>
+              </div>
+              <p>{profile.telegramMessageSuggestion}</p>
+              <small>Review and adapt before sending. No figures or product names included.</small>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

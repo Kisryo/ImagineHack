@@ -1339,3 +1339,275 @@ h3 {
     align-items: start;
   }
 }
+
+.ai-profile-card {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #cfe3d4;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f3faf4 0%, #ffffff 100%);
+  display: grid;
+  gap: 14px;
+}
+
+.ai-profile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-profile-head strong {
+  display: block;
+  color: #1b3a2a;
+  font-size: 0.98rem;
+  margin-top: 4px;
+}
+
+.ai-profile-eyebrow {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #d6efdc;
+  color: #1f5b3a;
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ai-profile-hint {
+  margin: 0;
+  color: #4a5b51;
+  font-size: 0.88rem;
+}
+
+.ai-profile-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fdecea;
+  color: #8a1c14;
+  font-size: 0.85rem;
+}
+
+.ai-profile-summary {
+  margin: 0;
+  color: #1b3a2a;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.ai-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-profile-grid > div {
+  padding: 10px 12px;
+  border: 1px solid #dfe8e1;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.ai-profile-grid h5 {
+  margin: 0 0 6px;
+  font-size: 0.74rem;
+  color: #66766e;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ai-profile-grid ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+  color: #203a31;
+}
+
+.ai-profile-grid li {
+  margin-bottom: 3px;
+}
+
+.ai-profile-style {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eef6f0;
+}
+
+.ai-profile-style span {
+  display: block;
+  font-size: 0.72rem;
+  color: #66766e;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ai-profile-style strong {
+  display: block;
+  margin-top: 2px;
+  color: #1b3a2a;
+}
+
+.ai-telegram-suggestion {
+  padding: 12px;
+  border: 1px dashed #7fb98c;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.ai-telegram-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.ai-telegram-head span {
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1f5b3a;
+}
+
+.ai-telegram-suggestion p {
+  margin: 0;
+  color: #1b3a2a;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .ai-profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .ai-profile-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.ai-evidence {
+  color: #4a5b51;
+  font-weight: 400;
+}
+
+.ai-profile-grid.wide {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 1100px) {
+  .ai-profile-grid.wide {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.ai-profile-page {
+  display: grid;
+  gap: 16px;
+}
+
+.ai-profile-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #dfe8e1;
+  border-radius: 12px;
+  background: #fbfdfb;
+}
+
+.ai-profile-context span {
+  display: block;
+  font-weight: 850;
+  color: #1b3a2a;
+}
+
+.ai-profile-context small {
+  color: #66766e;
+}
+
+.ai-profile-empty {
+  padding: 16px 18px;
+  border: 1px dashed #cfe3d4;
+  border-radius: 12px;
+  background: #f6fbf7;
+}
+
+.ai-profile-empty h4 {
+  margin: 0 0 6px;
+  color: #1b3a2a;
+}
+
+.ai-profile-empty p {
+  margin: 0 0 10px;
+  color: #4a5b51;
+}
+
+.ai-profile-empty ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #203a31;
+}
+
+.ai-profile-page-body {
+  display: grid;
+  gap: 16px;
+}
+
+.ai-profile-summary-card {
+  padding: 16px 18px;
+  border: 1px solid #cfe3d4;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #eef7f1 0%, #ffffff 100%);
+}
+
+.ai-profile-summary-card h4 {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #1f5b3a;
+}
+
+.ai-profile-summary-card p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: #1b3a2a;
+  font-weight: 600;
+}
+
+.ai-profile-style-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .ai-profile-style-row {
+    grid-template-columns: 1fr;
+  }
+  .ai-profile-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.ai-telegram-suggestion.large {
+  padding: 16px 18px;
+}
+
+.ai-telegram-suggestion.large p {
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.ai-telegram-suggestion small {
+  display: block;
+  margin-top: 8px;
+  color: #66766e;
+}

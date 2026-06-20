@@ -75,6 +75,71 @@ h3 {
   padding: 20px 0 42px;
 }
 
+.primary-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.route-surface,
+.page-stack,
+.demo-page {
+  min-width: 0;
+}
+
+.page-stack,
+.demo-page {
+  display: grid;
+  gap: 14px;
+}
+
+.side-nav {
+  position: sticky;
+  top: 12px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(207, 218, 211, 0.9);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 20px 44px rgba(47, 67, 57, 0.08);
+}
+
+.side-nav div {
+  display: grid;
+  gap: 6px;
+}
+
+.side-nav span,
+.side-nav small {
+  color: #66756e;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.side-nav button {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: #294139;
+  background: transparent;
+  font-weight: 850;
+  text-align: left;
+}
+
+.side-nav button.active,
+.side-nav button:hover {
+  color: #ffffff;
+  background: #135f4e;
+}
+
+.side-nav .demo-link {
+  border: 1px solid #cfd9d2;
+  background: #f9fbf8;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -892,6 +957,21 @@ h3 {
   background: #ffe0d7;
 }
 
+.demo-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.demo-actions button {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #135f4e;
+  font-weight: 850;
+}
+
 .pipeline-track,
 .progress-list article > span {
   height: 8px;
@@ -924,6 +1004,15 @@ h3 {
 }
 
 @media (max-width: 1240px) {
+  .primary-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .side-nav {
+    position: static;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .advisor-layout,
   .admin-layout {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -944,7 +1033,8 @@ h3 {
   .command-hero,
   .brief-grid,
   .metrics-grid,
-  .client-strip {
+  .client-strip,
+  .demo-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -977,12 +1067,14 @@ h3 {
 
   .advisor-layout,
   .admin-layout,
+  .side-nav,
   .demo-rail,
   .action-rail,
   .command-hero,
   .brief-grid,
   .metrics-grid,
   .client-strip,
+  .demo-actions,
   .content-grid,
   .content-grid.three,
   .memory-layout,

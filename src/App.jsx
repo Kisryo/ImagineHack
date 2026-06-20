@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   advisors,
   auditLogsSeed,
@@ -41,6 +41,28 @@ const seededReferrals = referralOutcomes.map((referral) => {
   };
 });
 
+const advisorRoutes = [
+  ["/advisor/today", "Today"],
+  ["/advisor/clients", "Clients"],
+  ["/advisor/client", "Cockpit"],
+  ["/advisor/actions", "Actions"],
+  ["/advisor/partners", "Partners"],
+  ["/advisor/learning", "Learning"],
+  ["/advisor/claims", "Claims"],
+];
+
+const adminRoutes = [
+  ["/admin/impact", "Impact"],
+  ["/admin/compliance", "Compliance"],
+  ["/admin/referrals", "Referrals"],
+  ["/admin/audit", "Audit"],
+];
+
+function normalizePath(pathname) {
+  const supported = new Set([...advisorRoutes, ...adminRoutes, ["/demo", "Demo"]].map(([path]) => path));
+  return supported.has(pathname) ? pathname : "/advisor/today";
+}
+
 function getClient(clientId, source = clients) {
   return source.find((client) => client.id === clientId);
 }
@@ -71,7 +93,8 @@ function buildImpactSummary({ auditLogs, businessImpactRows, consentRequests, cp
     findRow(/referral revenue|weighted referral/i)?.displayValue ??
     findRow(/referral/i)?.displayValue ??
     "RM 0";
-  const blockedRisks = auditLogs.filter((log) => log.risk === "High").length + consentRequests.length;
+  const openConsentRequests = consentRequests.filter((request) => request.status === "Pending admin review");
+  const blockedRisks = auditLogs.filter((log) => log.risk === "High").length + openConsentRequests.length;
   const openTasks = tasks.filter((task) => task.status !== "Done").length;
   const overdueTasks = tasks.filter((task) => task.status === "Overdue").length;
   const followUpCompletion = Math.max(0, Math.round(((tasks.length - openTasks) / Math.max(tasks.length, 1)) * 100));
@@ -95,6 +118,7 @@ function buildImpactSummary({ auditLogs, businessImpactRows, consentRequests, cp
 }
 
 function App() {
+  const [currentPath, setCurrentPath] = useState(() => normalizePath(window.location.pathname));
   const [role, setRole] = useState("Advisor");
   const [activeClientId, setActiveClientId] = useState("client-tan");
   const [tasks, setTasks] = useState(taskSeed);
@@ -183,6 +207,31 @@ function App() {
       }),
     [clientsState, tasks, referrals]
   );
+
+  useEffect(() => {
+    const handlePopState = () => setCurrentPath(normalizePath(window.location.pathname));
+    window.addEventListener("popstate", handlePopState);
+    if (window.location.pathname !== currentPath) {
+      window.history.replaceState({}, "", currentPath);
+    }
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (currentPath.startsWith("/admin") && role !== "Admin") {
+      setRole("Admin");
+    }
+    if (currentPath.startsWith("/advisor") && role !== "Advisor") {
+      setRole("Advisor");
+    }
+  }, [currentPath, role]);
+
+  function navigate(path) {
+    const nextPath = normalizePath(path);
+    if (nextPath === currentPath) return;
+    window.history.pushState({}, "", nextPath);
+    setCurrentPath(nextPath);
+  }
 
   function addAudit(action, risk = "Low") {
     setAuditLogs((current) => [
@@ -391,59 +440,80 @@ function App() {
 
   return (
     <main className="app-shell">
-      <TopBar role={role} setRole={setRole} businessImpact={businessImpact} />
-      {role === "Advisor" ? (
-        <AdvisorExperience
-          activeClient={activeClient}
-          activeClientId={activeClientId}
-          activeExpenses={activeExpenses}
-          activeReferrals={activeReferrals}
-          activeTasks={activeTasks}
-          businessImpactRows={businessImpactRows}
-          businessImpact={businessImpact}
-          clientBrief={clientBrief}
-          clientsState={clientsState}
-          complianceRisk={complianceRisk}
-          composerMode={composerMode}
-          consentLocked={consentLocked}
-          cpd={cpd}
-          createExpense={createExpense}
-          createFollowUp={createFollowUp}
-          createReferral={createReferral}
-          demoStory={demoStory}
-          expenseAmount={expenseAmount}
-          followUpText={followUpText}
-          generatedDraft={generatedDraft}
-          meetings={meetings}
-          morningBrief={morningBrief}
-          nextActions={nextActions}
-          onApproveDraft={approveComposerDraft}
-          partnerMatches={partnerMatches}
-          priorityClients={priorityClients}
-          requestConsentRefresh={requestConsentRefresh}
-          selectClient={selectClient}
-          setComposerMode={setComposerMode}
-          setExpenseAmount={setExpenseAmount}
-          setFollowUpText={setFollowUpText}
-          completeTask={completeTask}
-        />
-      ) : (
-        <AdminExperience
-          adminMetrics={adminMetrics}
-          adminReviewItems={adminReviewItems}
-          auditLogs={auditLogs}
-          businessImpact={businessImpact}
-          businessImpactRows={businessImpactRows}
-          clientsState={clientsState}
-          complianceQueue={complianceQueue}
-          consentRequests={consentRequests}
-          cpd={cpd}
-          expenses={expenses}
-          referrals={referrals}
-          resolveConsentRequest={resolveConsentRequest}
-          tasks={tasks}
-        />
-      )}
+      <TopBar
+        role={role}
+        setRole={(nextRole) => {
+          setRole(nextRole);
+          navigate(nextRole === "Admin" ? "/admin/impact" : "/advisor/today");
+        }}
+        businessImpact={businessImpact}
+      />
+      <div className="primary-layout">
+        <NavigationShell currentPath={currentPath} navigate={navigate} role={role} />
+        <div className="route-surface">
+          {currentPath === "/demo" ? (
+            <DemoPage
+              auditLogs={auditLogs}
+              businessImpact={businessImpact}
+              demoStory={demoStory}
+              navigate={navigate}
+              priorityClients={priorityClients}
+            />
+          ) : role === "Advisor" ? (
+            <AdvisorExperience
+              activeClient={activeClient}
+              activeClientId={activeClientId}
+              activeExpenses={activeExpenses}
+              activeReferrals={activeReferrals}
+              activeTasks={activeTasks}
+              businessImpact={businessImpact}
+              clientBrief={clientBrief}
+              clientsState={clientsState}
+              complianceRisk={complianceRisk}
+              composerMode={composerMode}
+              consentLocked={consentLocked}
+              cpd={cpd}
+              createExpense={createExpense}
+              createFollowUp={createFollowUp}
+              createReferral={createReferral}
+              expenseAmount={expenseAmount}
+              followUpText={followUpText}
+              generatedDraft={generatedDraft}
+              meetings={meetings}
+              morningBrief={morningBrief}
+              navigate={navigate}
+              nextActions={nextActions}
+              onApproveDraft={approveComposerDraft}
+              partnerMatches={partnerMatches}
+              priorityClients={priorityClients}
+              requestConsentRefresh={requestConsentRefresh}
+              route={currentPath}
+              selectClient={selectClient}
+              setComposerMode={setComposerMode}
+              setExpenseAmount={setExpenseAmount}
+              setFollowUpText={setFollowUpText}
+              completeTask={completeTask}
+            />
+          ) : (
+            <AdminExperience
+              adminMetrics={adminMetrics}
+              adminReviewItems={adminReviewItems}
+              auditLogs={auditLogs}
+              businessImpact={businessImpact}
+              businessImpactRows={businessImpactRows}
+              clientsState={clientsState}
+              complianceQueue={complianceQueue}
+              consentRequests={consentRequests}
+              cpd={cpd}
+              expenses={expenses}
+              referrals={referrals}
+              resolveConsentRequest={resolveConsentRequest}
+              route={currentPath}
+              tasks={tasks}
+            />
+          )}
+        </div>
+      </div>
     </main>
   );
 }
@@ -486,6 +556,43 @@ function TopBar({ role, setRole, businessImpact }) {
   );
 }
 
+function NavigationShell({ currentPath, navigate, role }) {
+  return (
+    <aside className="side-nav">
+      <div>
+        <span>Advisor</span>
+        {advisorRoutes.map(([path, label]) => (
+          <button
+            className={currentPath === path ? "active" : ""}
+            key={path}
+            onClick={() => navigate(path)}
+            type="button"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div>
+        <span>Admin</span>
+        {adminRoutes.map(([path, label]) => (
+          <button
+            className={currentPath === path ? "active" : ""}
+            key={path}
+            onClick={() => navigate(path)}
+            type="button"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <button className={currentPath === "/demo" ? "active demo-link" : "demo-link"} onClick={() => navigate("/demo")} type="button">
+        Guided Demo
+      </button>
+      <small>{role} workspace</small>
+    </aside>
+  );
+}
+
 function AdvisorExperience(props) {
   const {
     activeClient,
@@ -503,12 +610,12 @@ function AdvisorExperience(props) {
     createExpense,
     createFollowUp,
     createReferral,
-    demoStory,
     expenseAmount,
     followUpText,
     generatedDraft,
     meetings,
     morningBrief,
+    navigate,
     nextActions,
     onApproveDraft,
     partnerMatches,
@@ -519,64 +626,59 @@ function AdvisorExperience(props) {
     setExpenseAmount,
     setFollowUpText,
     completeTask,
+    route,
   } = props;
 
-  return (
-    <div className="advisor-layout">
-        <DemoRail demoEvents={demoEvents} demoStory={demoStory} />
+  const clientQueue = (
+    <section className="panel">
+      <PanelHeader title="Client Priority Queue" meta="Explainable scoring" />
+      <div className="client-strip">
+        {priorityClients.map((client) => (
+          <button
+            className={`client-tile ${activeClientId === client.id ? "selected" : ""} ${
+              client.consentStatus === "Verified" ? "" : "locked"
+            }`}
+            key={client.id}
+            onClick={() => {
+              selectClient(client.id);
+              navigate("/advisor/client");
+            }}
+            type="button"
+          >
+            <span>{displayClientName(client)}</span>
+            <strong>{client.consentStatus === "Verified" ? client.score : "Hold"}</strong>
+            <small>
+              {client.consentStatus === "Verified"
+                ? client.prioritySignals.join(" / ")
+                : "Private signals masked / Consent hold"}
+            </small>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 
-      <div className="workspace-stack">
-        <section className="command-hero">
-          <div>
-            <p className="eyebrow">Judge Demo Mode</p>
-            <h2>One client signal becomes a governed advisor action plan.</h2>
-            <p>
-              AdvisorFlow connects client memory, CPD, partner matching, follow-ups, expense controls,
-              and audit visibility into one morning command centre.
-            </p>
-          </div>
-          <div className="impact-strip">
-            <ImpactStat label="Managed Premium" value={businessImpact.managedPremium} />
-            <ImpactStat label="Pipeline Value" value={businessImpact.referralPipeline} />
-            <ImpactStat label="Blocked Risks" value={businessImpact.blockedRisks} />
-          </div>
-        </section>
+  if (route === "/advisor/clients") {
+    return (
+      <div className="page-stack">
+        {clientQueue}
+        <div className="content-grid">
+          <MeetingsPanel clientsState={clientsState} meetings={meetings} />
+          <CompliancePanel
+            activeClient={activeClient}
+            complianceRisk={complianceRisk}
+            consentLocked={consentLocked}
+            requestConsentRefresh={requestConsentRefresh}
+          />
+        </div>
+      </div>
+    );
+  }
 
-        <section className="panel">
-          <PanelHeader title="Morning Command Brief" meta="Generated 08:00 MYT" />
-          <div className="brief-grid">
-            {morningBrief.map((item) => (
-              <article className="brief-card" key={item}>
-                {item}
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel">
-          <PanelHeader title="Client Priority Queue" meta="Explainable scoring" />
-          <div className="client-strip">
-            {priorityClients.map((client) => (
-              <button
-                className={`client-tile ${activeClientId === client.id ? "selected" : ""} ${
-                  client.consentStatus === "Verified" ? "" : "locked"
-                }`}
-                key={client.id}
-                onClick={() => selectClient(client.id)}
-                type="button"
-              >
-                <span>{displayClientName(client)}</span>
-                <strong>{client.consentStatus === "Verified" ? client.score : "Hold"}</strong>
-                <small>
-                  {client.consentStatus === "Verified"
-                    ? client.prioritySignals.join(" / ")
-                    : "Private signals masked / Consent hold"}
-                </small>
-              </button>
-            ))}
-          </div>
-        </section>
-
+  if (route === "/advisor/client") {
+    return (
+      <div className="page-stack">
+        {clientQueue}
         <div className="content-grid">
           <ClientMemory activeClient={activeClient} />
           <CopilotPanel
@@ -586,27 +688,13 @@ function AdvisorExperience(props) {
             nextActions={nextActions}
           />
         </div>
-
-        <div className="content-grid three">
-          <FollowUpManager
-            activeTasks={activeTasks}
-            completeTask={completeTask}
-            consentLocked={consentLocked}
-            createFollowUp={createFollowUp}
-            followUpText={followUpText}
-            setFollowUpText={setFollowUpText}
-          />
-          <PartnerRadar
-            activeClient={activeClient}
-            consentLocked={consentLocked}
-            createReferral={createReferral}
-            partnerMatches={partnerMatches}
-          />
-          <LearningPanel cpd={cpd} />
-        </div>
       </div>
+    );
+  }
 
-      <aside className="action-rail">
+  if (route === "/advisor/actions") {
+    return (
+      <div className="content-grid three">
         <ActionComposer
           composerMode={composerMode}
           consentLocked={consentLocked}
@@ -614,23 +702,112 @@ function AdvisorExperience(props) {
           onApproveDraft={onApproveDraft}
           setComposerMode={setComposerMode}
         />
+        <FollowUpManager
+          activeTasks={activeTasks}
+          completeTask={completeTask}
+          consentLocked={consentLocked}
+          createFollowUp={createFollowUp}
+          followUpText={followUpText}
+          setFollowUpText={setFollowUpText}
+        />
         <CompliancePanel
           activeClient={activeClient}
           complianceRisk={complianceRisk}
           consentLocked={consentLocked}
           requestConsentRefresh={requestConsentRefresh}
         />
-        <MeetingsPanel clientsState={clientsState} meetings={meetings} />
+      </div>
+    );
+  }
+
+  if (route === "/advisor/partners") {
+    return (
+      <div className="content-grid">
+        <PartnerRadar
+          activeClient={activeClient}
+          consentLocked={consentLocked}
+          createReferral={createReferral}
+          partnerMatches={partnerMatches}
+        />
+        <section className="panel">
+          <PanelHeader title="Referral Pipeline" meta={`${activeReferrals.length} selected client`} />
+          <PipelineList clientsState={clientsState} referrals={activeReferrals} />
+        </section>
+      </div>
+    );
+  }
+
+  if (route === "/advisor/learning") {
+    return (
+      <div className="content-grid">
+        <LearningPanel cpd={cpd} />
+        <section className="panel">
+          <PanelHeader title="Readiness Progress" meta="Advisor development" />
+          <ProgressRows
+            rows={[
+              ["CPD readiness", businessImpact.cpdReadiness],
+              ["Referral SLA hygiene", businessImpact.referralHygiene],
+              ["Follow-up completion", businessImpact.followUpCompletion],
+            ]}
+          />
+        </section>
+      </div>
+    );
+  }
+
+  if (route === "/advisor/claims") {
+    return (
+      <div className="content-grid">
         <ReferralExpensePanel
           activeExpenses={activeExpenses}
           activeReferrals={activeReferrals}
-          clientsState={clientsState}
           consentLocked={consentLocked}
           createExpense={createExpense}
           expenseAmount={expenseAmount}
           setExpenseAmount={setExpenseAmount}
         />
-      </aside>
+        <CompliancePanel
+          activeClient={activeClient}
+          complianceRisk={complianceRisk}
+          consentLocked={consentLocked}
+          requestConsentRefresh={requestConsentRefresh}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="page-stack">
+      <section className="command-hero">
+        <div>
+          <p className="eyebrow">Advisor Today</p>
+          <h2>One client signal becomes a governed advisor action plan.</h2>
+          <p>
+            AdvisorFlow connects client memory, CPD, partner matching, follow-ups, expense controls,
+            and audit visibility into one morning command centre.
+          </p>
+        </div>
+        <div className="impact-strip">
+          <ImpactStat label="Managed Premium" value={businessImpact.managedPremium} />
+          <ImpactStat label="Pipeline Value" value={businessImpact.referralPipeline} />
+          <ImpactStat label="Blocked Risks" value={businessImpact.blockedRisks} />
+        </div>
+      </section>
+
+      <section className="panel">
+        <PanelHeader title="Morning Command Brief" meta="Generated 08:00 MYT" />
+        <div className="brief-grid">
+          {morningBrief.map((item) => (
+            <article className="brief-card" key={item}>
+              {item}
+            </article>
+          ))}
+        </div>
+      </section>
+      <div className="content-grid">
+        {clientQueue}
+        <MeetingsPanel clientsState={clientsState} meetings={meetings} />
+      </div>
     </div>
   );
 }
@@ -944,7 +1121,6 @@ function MeetingsPanel({ clientsState, meetings }) {
 function ReferralExpensePanel({
   activeExpenses,
   activeReferrals,
-  clientsState,
   consentLocked,
   createExpense,
   expenseAmount,
@@ -1012,13 +1188,14 @@ function AdminExperience({
   expenses,
   referrals,
   resolveConsentRequest,
+  route,
   tasks,
 }) {
   const flaggedExpenses = expenses.filter((expense) => ["Flagged", "Masked"].includes(expense.status));
   const highRiskLogs = auditLogs.filter((log) => log.risk === "High");
+  const openConsentRequests = consentRequests.filter((request) => request.status === "Pending admin review");
 
-  return (
-    <div className="admin-layout">
+  const impactHero = (
       <section className="command-hero admin-hero">
         <div>
           <p className="eyebrow">Organisation-wide capability</p>
@@ -1034,7 +1211,9 @@ function AdminExperience({
           <ImpactStat label="Compliance" value={businessImpact.complianceHealth} />
         </div>
       </section>
+  );
 
+  const impactDashboard = (
       <section className="panel span-all">
         <PanelHeader title="Business Impact Dashboard" meta="Judge scoring view" />
         <div className="metrics-grid">
@@ -1057,16 +1236,20 @@ function AdminExperience({
           ))}
         </div>
       </section>
+  );
 
+  const referralPanel = (
       <section className="panel">
         <PanelHeader title="Referral Pipeline" meta={`${referrals.length} records`} />
         <PipelineList clientsState={clientsState} referrals={referrals} />
       </section>
+  );
 
+  const compliancePanel = (
       <section className="panel">
         <PanelHeader
           title="Compliance Queue"
-          meta={`${consentRequests.length + flaggedExpenses.length + complianceQueue.length} items`}
+          meta={`${openConsentRequests.length + flaggedExpenses.length + complianceQueue.length} open items`}
         />
         <div className="stack">
           {consentRequests.map((request) => (
@@ -1109,7 +1292,9 @@ function AdminExperience({
           ))}
         </div>
       </section>
+  );
 
+  const reviewPanel = (
       <section className="panel">
         <PanelHeader title="Admin Review Board" meta={`${adminReviewItems.length} controls`} />
         <div className="stack">
@@ -1124,7 +1309,9 @@ function AdminExperience({
           ))}
         </div>
       </section>
+  );
 
+  const coachingPanel = (
       <section className="panel">
         <PanelHeader title="Advisor Coaching" meta="CPD and task discipline" />
         <ProgressRows
@@ -1146,7 +1333,9 @@ function AdminExperience({
           ))}
         </div>
       </section>
+  );
 
+  const auditPanel = (
       <section className="panel span-2">
         <PanelHeader title="Audit And Blocked Actions" meta={`${highRiskLogs.length} high-risk logs`} />
         <div className="audit-table">
@@ -1160,7 +1349,9 @@ function AdminExperience({
           ))}
         </div>
       </section>
+  );
 
+  const taskPanel = (
       <section className="panel">
         <PanelHeader title="Task Controls" meta={`${tasks.length} actions`} />
         <div className="stack">
@@ -1171,6 +1362,95 @@ function AdminExperience({
                 <span>{formatClientName(task.clientId, clientsState)}</span>
               </div>
               <b>{task.status}</b>
+            </article>
+          ))}
+        </div>
+      </section>
+  );
+
+  if (route === "/admin/compliance") {
+    return (
+      <div className="admin-layout">
+        {compliancePanel}
+        {reviewPanel}
+        {taskPanel}
+      </div>
+    );
+  }
+
+  if (route === "/admin/referrals") {
+    return (
+      <div className="admin-layout">
+        {referralPanel}
+        {coachingPanel}
+        {reviewPanel}
+      </div>
+    );
+  }
+
+  if (route === "/admin/audit") {
+    return (
+      <div className="admin-layout">
+        {auditPanel}
+        {compliancePanel}
+        {taskPanel}
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-layout">
+      {impactHero}
+      {impactDashboard}
+      {referralPanel}
+      {compliancePanel}
+    </div>
+  );
+}
+
+function DemoPage({ auditLogs, businessImpact, demoStory, navigate, priorityClients }) {
+  return (
+    <div className="demo-page">
+      <section className="command-hero">
+        <div>
+          <p className="eyebrow">Guided Demo</p>
+          <h2>A five-minute story from overnight signal to governed business impact.</h2>
+          <p>
+            Walk the judges through the advisor path first, prove consent masking, then end on admin impact
+            and auditability.
+          </p>
+        </div>
+        <div className="impact-strip">
+          <ImpactStat label="Track Fit" value={`${businessImpact.trackFit}%`} />
+          <ImpactStat label="Blocked Risks" value={businessImpact.blockedRisks} />
+          <ImpactStat label="Pipeline Value" value={businessImpact.referralPipeline} />
+        </div>
+      </section>
+      <DemoRail demoEvents={demoEvents} demoStory={demoStory} />
+      <section className="panel">
+        <PanelHeader title="Demo Controls" meta="Suggested path" />
+        <div className="demo-actions">
+          {[
+            ["/advisor/today", "Start Morning Brief"],
+            ["/advisor/client", `Open ${displayClientName(priorityClients[0])}`],
+            ["/advisor/actions", "Show Blocked Actions"],
+            ["/admin/impact", "Close With Impact"],
+          ].map(([path, label]) => (
+            <button key={path} onClick={() => navigate(path)} type="button">
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="panel">
+        <PanelHeader title="Latest Audit Evidence" meta={`${auditLogs.length} logs`} />
+        <div className="audit-table">
+          {auditLogs.slice(0, 4).map((log) => (
+            <article key={log.id}>
+              <span>{log.time}</span>
+              <strong>{log.actor}</strong>
+              <p>{log.action}</p>
+              <b className={`risk-${log.risk.toLowerCase()}`}>{log.risk}</b>
             </article>
           ))}
         </div>

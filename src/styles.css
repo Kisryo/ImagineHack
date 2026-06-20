@@ -231,7 +231,7 @@ h3 {
 }
 
 .mode-switch {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .segmented button,
@@ -391,6 +391,92 @@ h3 {
   background: #fff8ed;
   font-size: 0.93rem;
   font-weight: 700;
+}
+
+.supabase-panel {
+  border-color: #c4d9cf;
+  background: #f5fbf8;
+}
+
+.supabase-panel.error {
+  border-color: #e6ad9a;
+  background: #fff7f3;
+}
+
+.ready-actions {
+  border-color: #b8d7ca;
+}
+
+.action-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.smart-message-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #dbe5dd;
+  border-radius: 10px;
+  background: #fbfdfb;
+}
+
+.message-header,
+.message-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.message-header span {
+  display: block;
+  color: #135f4e;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.message-header strong {
+  color: #203a31;
+  font-size: 1rem;
+}
+
+.message-header b {
+  width: 44px;
+  height: 34px;
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #135f4e;
+}
+
+.smart-message-card p,
+.smart-message-card blockquote,
+.smart-message-card small {
+  margin: 0;
+  color: #56675f;
+}
+
+.smart-message-card blockquote {
+  padding: 12px;
+  border-left: 4px solid #135f4e;
+  border-radius: 8px;
+  background: #eef6f2;
+  font-weight: 750;
+}
+
+.message-actions button {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #135f4e;
+  font-weight: 850;
 }
 
 .client-strip {
@@ -1077,6 +1163,7 @@ h3 {
   .demo-actions,
   .content-grid,
   .content-grid.three,
+  .action-card-grid,
   .memory-layout,
   .insight-grid,
   .impact-strip {

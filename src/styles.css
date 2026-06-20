@@ -195,7 +195,6 @@ h3 {
 .timeline small,
 .client-tile small,
 .memory-list,
-.brief-card,
 .story-step span,
 .quiet-text {
   color: #66756e;
@@ -1544,7 +1543,6 @@ h3 {
     gap: 4px;
   }
 
-  .brief-card,
   .client-tile,
   .metric,
   .impact-stat {

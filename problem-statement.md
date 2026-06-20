@@ -1,73 +1,161 @@
-# Compass — Problem Statement (MVP)
+# AdvisorFlow AI - Problem Statement
 
-*One problem. One underserved market. All three gaps still closed.*
+> One advisor pain. One business opportunity. One governed operating layer.
 
----
+## 1. Core Insight
 
-## The core insight (this is the whole pitch)
+Advisors do not lose time because they lack tools. They lose time because the important signals are scattered.
 
-When an advisor leaves, the firm **doesn't** leave the client hanging — it assigns a new advisor to take over. The **hard data** transfers fine: IC, policies, contact details, account history. A CRM or even a spreadsheet already holds that.
+A client may have:
 
-What **doesn't** transfer is the **relational knowledge** — the soft, behavioural context that actually makes the relationship work:
+- A policy review due
+- A missed premium
+- A recent business event
+- A coverage gap
+- A partner referral opportunity
+- A CPD-related advisor knowledge gap
+- A compliance or consent restriction
+- An admin expense or audit item
 
-- *"This client lights up when you talk insurance, but shuts down on estate planning."*
-- *"Always call after lunch, never on Monday."*
-- *"Still sore about a bad recommendation in 2022 — rebuild trust before pitching."*
-- *"Decisions only happen when the spouse is in the room."*
+Each signal may sit in a different place: CRM notes, calendars, messages, spreadsheets, billing systems, private memory, or admin records.
 
-That lives only in the departing advisor's head. The new advisor inherits the **file**, but starts **cold on the person**. The client feels the reset — and churns.
+The advisor sees the file, but not the full action picture.
 
-> **The real problem isn't lost records. It's lost relationships.**
-> CRMs store records. Compass captures the relational knowledge they were never designed to hold — and makes it firm-owned, so it transfers with the client.
+> The real problem is not missing data. The real problem is missing prioritization, context, and governed next action.
 
----
+AdvisorFlow AI turns these scattered signals into a daily advisor command centre.
 
-## The one-liner (pick one)
+## 2. One-Liner Options
 
-**Version A — the loss angle**
-> When an advisor leaves, the new advisor inherits the client's file — but not the relationship. Everything that made it work (how this client thinks, what they respond to, what to avoid) was never written down. Compass captures that relational knowledge as firm-owned memory, so a handover transfers the *relationship*, not just the records.
+**Version A - productivity angle**
 
-**Version B — the ownership angle**
-> A firm's most valuable asset — how each client actually thinks and what they respond to — sits in individual advisors' heads, not the firm's systems. Compass turns that relational knowledge into a firm-owned asset, so it stops walking out the door and starts transferring cleanly to whoever takes over.
+AdvisorFlow AI helps advisors know who to contact first, what to say next, which partner to involve, and what compliance guardrail to check before action.
 
----
+**Version B - business growth angle**
 
-## The structure (for the slide)
+AdvisorFlow AI converts client signals into advisor actions, partner referrals, and admin-visible business outcomes.
 
-**WHO**
-Small & mid-size advisory firms in Southeast Asia (Malaysia focus) — the segment too small for enterprise wealth-tech.
+**Version C - governance angle**
 
-**THE PROBLEM (headline — Gap 3)**
-When an advisor leaves, the firm assigns a successor — but the **relational knowledge** never transfers. The hard data (IC, policies, contacts) is in the CRM; the behavioural context (how the client thinks, what they respond to, what to avoid) is only in the departing advisor's head. The successor inherits the file but starts cold on the person, and the client feels the reset.
+AdvisorFlow AI gives advisors speed without losing control by embedding consent, suitability, compliance, and audit visibility into the workflow.
 
-**WHY THEY'RE STUCK TODAY (the wedge — Gap 4)**
-CRMs store *records*, not *relationships* — they were never built to capture soft behavioural context. The tools that come closest are built for large Western wealth firms: enterprise budgets, five-vendor stacks, dedicated integration teams. Small firms can't afford or integrate them, so they fall back on spreadsheets and memory. *Compass is built for firms their size — affordable, unified, mobile-first, deployable without an integration team.*
+## 3. Who Has This Problem
 
-**THE SOLUTION**
-One platform built on a shared Institutional Memory Graph. Every client interaction is captured as structured, firm-owned data — with the **behavioural and relational signals** extracted, not just the facts. One click regenerates a full handover pack for the next advisor that reads like *"here's how to actually work with this person"* — so a departure stops being a loss event.
+Primary users:
 
-**THE BONUS THAT COMPOUNDS (Gap 1)**
-Because the memory already holds the advisor's real notes, the same AI pass detects recurring knowledge gaps, serves a matching micro-lesson at the moment of need, and auto-logs the mandatory CPD hours. Learning stops being a year-end scramble and becomes a by-product of real work.
+- Insurance advisors
+- Financial advisors
+- Agency leaders
+- Admin and compliance teams
+- Partner desk coordinators
 
----
+Market context:
 
-## How one problem still covers all three gaps
+- AAG and ASG style advisory distribution
+- Malaysia and Southeast Asia advisory teams
+- Growing agencies that need better operating discipline without enterprise complexity
 
-| Gap | Role in the pitch | How it shows up |
-|-----|-------------------|-----------------|
-| **Gap 3 — Memory walks out the door** | **Headline problem** | The visceral pain + the dramatic demo moment: a handover pack that transfers the *relationship*, not just the file. |
-| **Gap 1 — Learning blind spot** | **Compounding bonus** | Falls out of the memory graph for free — gap detection + auto-logged CPD. |
-| **Gap 4 — Built for giants, not the rest** | **The wedge / positioning** | "CRMs store records, not relationships" + "enterprise tools are too costly for SMEs" — baked into WHO + WHY-STUCK. |
+## 4. The Problem In Plain Language
 
-**The single thread:** *When an advisor leaves, transfer the relationship — not just the records — for the SME firms everyone else ignores. Learning + compliance come along for the ride.*
+Advisors are expected to grow relationships, protect retention, spot opportunities, complete CPD, manage admin tasks, and stay compliant. But their workflow is usually fragmented.
 
----
+This creates four practical gaps:
 
-## Why this framing wins
+| Gap | What Happens Today | Business Impact |
+|-----|--------------------|-----------------|
+| Priority gap | Advisors decide manually who to call first | High-value or high-risk clients can be missed |
+| Context gap | Client needs, signals, and history are scattered | Follow-up becomes slower and less personal |
+| Partner gap | Referral opportunities depend on advisor memory | AAG x ASG partner value is not captured consistently |
+| Governance gap | Compliance, consent, and audit checks happen after the fact | Higher review burden and higher risk |
 
-- The problem is **specific**: not "we lose knowledge," but "we lose the *relational intelligence* the CRM was never designed to hold."
-- It explains **why existing tools don't solve it** — a real differentiator, not just "we're cheaper."
-- The pain is **visceral and easy to picture** (advisor quits, successor starts cold, client churns).
-- It's **demo-able**: a handover pack that reads like a relationship briefing, not a data dump.
-- The other two gaps still get airtime — as a *bonus* and as *positioning* — so nothing is lost.
-- It maps cleanly to the **MVP demo flow**: log a note → memory updates → gap detected → lesson served → CPD logged → advisor "resigns" → handover pack generated.
+## 5. Why Existing Tools Are Not Enough
+
+Traditional CRMs store records. They are useful, but they do not always answer:
+
+- Why is this client urgent today?
+- What changed since the last meeting?
+- What is the next best action?
+- Which partner desk fits this opportunity?
+- What evidence is needed before recommendation?
+- Is consent still valid?
+- What should admin review?
+
+Advisors still need to interpret the records manually. That is where time is lost and opportunities disappear.
+
+## 6. Proposed Solution
+
+AdvisorFlow AI is a web-based advisor command centre that combines:
+
+1. **Client intelligence**
+   - Priority scoring
+   - Client memory
+   - Meeting context
+   - Coverage gap and risk signals
+
+2. **Advisor action support**
+   - AI-style brief
+   - Next-best actions
+   - Draft follow-up messages
+   - Task creation
+   - CPD recommendations
+
+3. **Partner growth layer**
+   - AAG and ASG partner matching
+   - Referral stage tracking
+   - Evidence needs
+   - Expected value and outcome visibility
+
+4. **Governance layer**
+   - Consent masking
+   - Compliance risk scoring
+   - Admin review queue
+   - Expense review
+   - Audit trail
+
+## 7. Why This Wins For Track 1
+
+Track 1 is about practical improvement to advisory work. AdvisorFlow AI fits because it demonstrates:
+
+- Measurable advisor time saved
+- Better client prioritization
+- Stronger retention and service risk handling
+- More consistent partner referrals
+- CPD and coaching support
+- Compliance embedded directly into daily workflow
+- Admin visibility over the full operating picture
+
+## 8. MVP Demo Story
+
+The demo should not feel like a random dashboard tour. It should tell one story:
+
+1. Overnight, several client signals arrive.
+2. AdvisorFlow AI ranks which clients need attention.
+3. Advisor selects a client.
+4. The system explains why the client matters.
+5. It recommends next-best actions.
+6. It drafts a compliant message.
+7. It matches the right AAG or ASG partner.
+8. It blocks unsafe action when consent is missing.
+9. Admin can see referrals, risk, expenses, and audit history.
+
+The judge should understand the value without needing technical explanation.
+
+## 9. Success Metrics
+
+Potential judging metrics:
+
+- Advisor admin hours saved per week
+- Priority clients contacted on time
+- Referral opportunities detected
+- Referral value created
+- Coverage gap identified
+- Compliance review items caught early
+- Consent-blocked actions prevented
+- CPD recommendations completed
+
+## 10. Final Positioning
+
+AdvisorFlow AI is not just a CRM. It is an advisor operating layer.
+
+It helps advisors move from scattered data to ranked action, from manual follow-up to governed draft workflow, and from hidden opportunities to partner-ready business growth.
+

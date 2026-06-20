@@ -1,123 +1,178 @@
-# Compass — plan.md (Prototype Plan & Workflow)
+# AdvisorFlow AI - Prototype Plan And Workflow
 
-> Companion docs: `design.md` (architecture) · `task.md` (implementation checklist) · `problem-statement.md` (pitch framing) · `CLAUDE.md` (project spec)
+> Companion docs: `README.md`, `draft.md`, `problem-statement.md`, `design.md`, `task.md`.
 
----
+## 1. North Star
 
-## 1. North star
+AdvisorFlow AI should become the morning command centre for an advisor.
 
-**Transfer the relationship, not just the records.** When an advisor leaves, the firm assigns a successor — but the relational knowledge (how a client thinks, what they respond to, what to avoid) never transfers because it only lived in the departing advisor's head. Compass captures it as firm-owned memory and hands it over in one click.
+Success means the demo clearly shows:
 
-For the prototype, success = **one rehearsed end-to-end demo flow that visibly closes all three gaps**, on a live URL.
+- A client signal arrives.
+- The system ranks priority.
+- The advisor understands why.
+- The advisor gets next-best actions.
+- The right partner desk is matched.
+- Compliance and consent are checked.
+- Admin can see the business outcome.
 
----
+## 2. Current Scope
 
-## 2. Scope
+### In Scope For The Hackathon Prototype
 
-### In scope (MVP — must work in the demo)
-- Auth + roles (advisor / team_lead / admin), advisor sees only own clients.
-- Pre-seeded "Wong family" client with 5–6 notes, 8–10 micro-lessons, a few partners.
-- **Ingestion:** type a note → LLM extracts summary + commitments + sensitivities + **behavioural/relational signals** + partner mentions → save + embed.
-- **Retrieval:** natural-language query → vector search that client's notes → cited answer.
-- **Learning loop:** detect a recurring/struggle topic → match a micro-lesson → mark complete → auto-log CPD → dashboard.
-- **Handover pack:** one click → structured one-pager that reads like a *relationship briefing*.
-- **Audit log** written on every client-record view.
+- Advisor and Admin demo roles
+- Priority client ranking
+- AI-style client brief
+- Evidence-backed next-best actions
+- Follow-up draft composer
+- Compliance draft mode
+- Partner referral matching
+- Consent-lock masking
+- CPD recommendation panel
+- Task and expense interactions
+- Admin business impact dashboard
+- Referral pipeline
+- Compliance queue
+- Admin review board
+- Audit trail
+- Local seeded data
+- Offline deterministic logic
 
-### Out of scope (stretch — only if time)
-- Partner ecosystem beyond a static directory + simple tagging.
-- Voice-to-text capture, morning briefing, post-lesson quiz, PDF export, dark mode, admin audit viewer.
+### Out Of Scope For Current Prototype
 
-### Explicit non-goals
-- No real KYC/IC handling — we deliberately target *behavioural/relational* data, not regulated identity data.
-- No multi-firm tenancy, billing, or production hardening.
+- Real authentication
+- Real database persistence
+- Live AI model calls
+- Real client records
+- Real email or WhatsApp sending
+- Real partner desk routing
+- Payment or billing
+- Multi-tenant production deployment
 
----
+## 3. Demo Flow To Rehearse
 
-## 3. The demo flow (the thing we rehearse)
+Use one clear story instead of showing every feature randomly.
 
-Pre-seed everything; live, add only ONE new note and let the system react.
+1. Advisor Alex opens the app.
+2. The morning brief explains the day.
+3. Priority clients are ranked.
+4. Mr. Tan is selected as the high-opportunity client.
+5. Advisor AI Copilot explains the liquidity event, evidence, risk, and opportunity.
+6. Action Composer drafts a follow-up.
+7. Partner Radar recommends ASG Tax Advisory Desk or AAG Estate Concierge.
+8. Mr. Kumar shows service-risk handling for premium lapse and debt exposure.
+9. Consent-locked client shows privacy and compliance guardrails.
+10. Admin view shows business impact, referrals, compliance, expenses, and audit logs.
 
-1. Advisor logs in → sees only their own clients.
-2. Logs a **new note** on the Wong family.
-3. Memory graph updates → client timeline shows the new note + extracted relational signals.
-4. Learning loop detects a **knowledge gap** → serves a matching micro-lesson.
-5. Advisor completes the lesson → **CPD auto-logged** on the dashboard.
-6. "Advisor resigns" → one click generates a **handover pack** for the successor that reads like *"here's how to actually work with this client."*
+## 4. Build Phases
 
-This single flow hits continuity (Gap 3), learning + compliance (Gap 1), and the unified affordable platform (Gap 4).
+### Phase 0 - Foundation
 
----
+Status: complete
 
-## 4. Build workflow (phases)
+- React/Vite project created.
+- App runs locally.
+- Build command works.
+- Base visual direction established.
 
-Build the **spine** first; modules are thin layers on top. If time runs short, a strong spine + handover demos better than three half-built modules.
+### Phase 1 - Data Layer
 
-**Phase 0 — Foundation**
-Repo + Next.js, Supabase with pgvector, env vars + LLM key, Vercel live URL, roles model agreed.
+Status: complete
 
-**Phase 1 — Data layer (memory graph)**
-Schema (see `design.md`), tables + relationships, vector columns, seed the Wong family + lessons + partners.
+- Advisors seeded.
+- Clients seeded.
+- Meetings seeded.
+- Tasks seeded.
+- Demo events seeded.
+- Partners seeded.
+- CPD modules seeded.
+- Compliance, expense, referral, and audit data seeded.
 
-**Phase 2 — Ingestion pipeline (spine pt.1)**
-Note-entry screen → LLM extraction prompt → structured JSON → save interaction + embedding.
+### Phase 2 - Engine Layer
 
-**Phase 3 — Retrieval (spine pt.2)**
-Query box → embed → vector search → cited LLM answer + client timeline/profile.
+Status: complete
 
-**Phase 4 — Learning loop (Gap 1)**
-Gap detection → lesson match by similarity → recommendation UI → mark-complete → cpd_log → CPD dashboard.
+- Priority score calculation.
+- Client brief generation.
+- Next-best action recommendation.
+- Draft message generation.
+- Partner matching.
+- Compliance scoring.
+- Business impact summary.
+- Morning brief and admin summary.
 
-**Phase 5 — Handover pack (Gap 3)**
-"Generate handover pack" → aggregate client history → structured relationship one-pager.
+### Phase 3 - Advisor Experience
 
-**Phase 6 — Security & access (Gap 4 credibility)**
-Login, role-based access enforced in queries, audit_log on client view.
+Status: complete
 
-**Phase 7 — UX + polish**
-App shell, navigation, mobile-responsive, loading/empty states.
+- Morning brief.
+- Priority client strip.
+- Advisor AI Copilot.
+- Client memory.
+- Action Composer.
+- Compliance Guardrail.
+- Partner Radar.
+- CPD panel.
+- Meetings and task panels.
 
-**Phase 8 — Pitch & demo**
-Slide deck, demo script, rehearsal, success-metrics slide, backup demo video.
+### Phase 4 - Admin Experience
 
-**Phase 9 — Testing & buffer**
-End-to-end test of the demo flow, bug-fix buffer.
+Status: complete
 
----
+- Business impact view.
+- Referral pipeline.
+- Compliance queue.
+- Consent requests.
+- Expense review.
+- Admin review board.
+- Advisor coaching.
+- Audit log.
 
-## 5. Critical path
+### Phase 5 - Documentation And Pitch Clarity
 
-`Foundation → schema + seed → ingestion → retrieval → learning loop → handover → login/audit → rehearse`
+Status: in progress
 
-Everything else (partner module, polish, exports) hangs off this and is droppable.
+- README improved.
+- Problem statement improved.
+- Design document improved.
+- Plan improved.
+- Checklist improved.
+- Product draft added.
 
----
+### Phase 6 - Production Path
 
-## 6. Milestones / checkpoints
+Status: future
 
-| Checkpoint | "Done" looks like |
-|-----------|-------------------|
-| M1 — Spine alive | Type a note, it's stored + embedded, and a query returns a cited answer. |
-| M2 — Learning loop closes | A gap is detected, a lesson served, completion logs CPD on the dashboard. |
-| M3 — Handover works | One click produces a readable relationship one-pager from all of a client's history. |
-| M4 — Secure + scoped | Login works; an advisor cannot see another's clients; views write audit_log. |
-| M5 — Demo-ready | Full flow runs on the live URL without manual DB pokes; deck + script rehearsed; backup video recorded. |
+- Add authentication.
+- Add database persistence.
+- Add secure advisor/admin permissions.
+- Add server-side audit logging.
+- Add real AI integration.
+- Add exportable reports.
+- Deploy to public URL.
 
----
+## 5. Critical Path
 
-## 7. Risks & mitigations
+```text
+Polish docs -> rehearse demo -> verify build -> prepare screenshots -> deploy or record backup -> present
+```
 
-- **Scope creep across 3 modules** → enforce the critical path; partner module stays stretch.
-- **LLM extraction returns malformed JSON** → strict prompt + schema validation + retry/fallback (see `design.md`).
-- **Demo depends on live LLM calls** → pre-seed data and record a backup video (M5).
-- **Vector search returns weak matches on tiny seed data** → curate seed notes/lessons so similarity is obvious in the demo.
-- **Auth/RLS eats time** → keep roles simple; enforce ownership in queries even if RLS isn't fully configured.
+For the competition, polish and rehearsal may matter more than adding another feature.
 
----
+## 6. Risks And Mitigations
 
-## 8. Working agreements
+| Risk | Mitigation |
+|------|------------|
+| Judges do not understand the value quickly | Start with the one-line story and show the priority client flow first |
+| Prototype looks like a normal CRM | Emphasize AI-style brief, next-best action, partner match, and compliance guardrail |
+| No live AI model | Be transparent: deterministic offline prototype now, production AI path documented |
+| Too many features shown | Use one rehearsed demo story |
+| Consent or compliance feels bolted on | Always show consent-locked client and admin audit view |
+| Local demo fails | Prepare screenshots and backup video |
 
-- Keep the spine stable before adding modules.
-- Prefer one clear demo flow over many shallow features.
-- All client-data access writes an audit_log entry.
-- Advisors never see clients they don't own — enforce in queries, not just UI.
-- Tick boxes in `task.md` as work completes.
+## 7. Final Presentation Target
+
+By the end of the demo, judges should remember:
+
+AdvisorFlow AI helps advisors know who to call, what to say, which partner to involve, and how to stay compliant, while giving admin a live view of productivity and risk.
+

@@ -2644,3 +2644,6 @@ h3 {
   }
 }
 
+
+.guardrails-tooltip { display: none; position: absolute; top: calc(100% + 10px); left: 0; z-index: 1000; background: #fff; border: 1px solid #d8e4dc; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+.score-pill.guardrails-hover:hover .guardrails-tooltip { display: block; }

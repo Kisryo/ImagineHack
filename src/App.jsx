@@ -705,9 +705,23 @@ function TopBar({ businessImpact, dataMode, isAuthenticated, onLogout, user }) {
         </div>
       </div>
       <div className="topbar-actions">
-        <div className="score-pill">
-          <span>Guardrails</span>
-          <strong>{businessImpact.blockedRisks}</strong>
+        <div className="score-pill guardrails-hover" style={{ position: 'relative', cursor: 'pointer' }}>
+          <span>🛡️ Guardrails</span>
+          <strong>{businessImpact.blockedRisks} active ⓘ</strong>
+          <div className="guardrails-tooltip">
+            <div style={{ padding: '15px', width: '280px', textAlign: 'left', cursor: 'default' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#135f4e', fontSize: '0.9rem' }}>🛡️ AI Guardrails</h4>
+              <p style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: '#56675f' }}>These rules protect every AI recommendation made to your clients:</p>
+              <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#14251f', lineHeight: '1.4' }}>
+                <li style={{ marginBottom: '4px' }}>✅ Shariah-compliant content only</li>
+                <li style={{ marginBottom: '4px' }}>✅ SC-approved products only</li>
+                <li style={{ marginBottom: '4px' }}>✅ Client risk profile enforced</li>
+                <li style={{ marginBottom: '4px' }}>✅ No speculative investment content</li>
+                <li style={{ marginBottom: '4px' }}>✅ BNM regulatory guidelines applied</li>
+                <li>✅ Age-appropriate recommendations only</li>
+              </ul>
+            </div>
+          </div>
         </div>
         <div className="identity">
           <span>{user.name}</span>

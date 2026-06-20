@@ -15,9 +15,25 @@ export default function LearningFeature({ activeAdvisor, clientsState, cpdModule
   );
   const selectedAdvisor = advisors.find((a) => a.id === selectedAdvisorId) ?? activeAdvisor ?? advisors[0];
 
-  const [completedModules, setCompletedModules] = useState([]);
-  const [completedCpdHours, setCompletedCpdHours] = useState(0);
-  const cpdTarget = 40.0;
+  const [completedModulesMap, setCompletedModulesMap] = useState({
+    "adv-alex": [{
+      id: "cpd-demo-estate",
+      title: "Introduction to Islamic Estate Planning",
+      cpdHours: 2.0,
+      completedAt: new Date().toISOString(),
+      matchScore: 98
+    }],
+    "adv-maya": [{
+      id: "cpd-mod-found-1",
+      title: "Fundamentals of Policy Underwriting & Suitability",
+      cpdHours: 2.0,
+      completedAt: new Date(Date.now() - 86400000 * 3).toISOString(), // 3 days ago
+      matchScore: 100
+    }]
+  });
+  const completedModules = completedModulesMap[selectedAdvisorId] || [];
+  const cpdTarget = selectedAdvisor.cpdTarget || 40.0;
+  const completedCpdHours = Math.min(cpdTarget, (selectedAdvisor.cpdHours || 0) + completedModules.reduce((sum, m) => sum + (m.cpdHours ?? 2.0), 0));
 
   const addAudit = (msg) => console.log('Audit:', msg);
 
@@ -86,12 +102,13 @@ export default function LearningFeature({ activeAdvisor, clientsState, cpdModule
   const handleQuizSuccess = useCallback(() => {
     if (quizData && quizData.course) {
       const course = quizData.course;
-      setCompletedCpdHours((prev) =>
-        Math.min(cpdTarget, +(prev + (course.cpdHours ?? 2.0)).toFixed(1))
-      );
-      setCompletedModules((prev) => {
-        if (prev.some((m) => m.id === course.id)) return prev;
-        return [...prev, { ...course, completedAt: new Date().toISOString() }];
+      setCompletedModulesMap((prev) => {
+        const advisorMods = prev[selectedAdvisorId] || [];
+        if (advisorMods.some((m) => m.id === course.id)) return prev;
+        return {
+          ...prev,
+          [selectedAdvisorId]: [...advisorMods, { ...course, completedAt: new Date().toISOString() }]
+        };
       });
       addAudit(`Completed CPD module & passed Knowledge Gate: ${course.title}`);
       if (cpdRecommendation.module && course.id === cpdRecommendation.module.id) {
@@ -100,7 +117,7 @@ export default function LearningFeature({ activeAdvisor, clientsState, cpdModule
     }
     setShowQuizModal(false);
     setQuizData(null);
-  }, [quizData, cpdTarget, cpdRecommendation]);
+  }, [quizData, cpdRecommendation, selectedAdvisorId]);
 
   const filteredCpd = safeCpd.filter(
     (course) => !cpdRecommendation.module || course.id !== cpdRecommendation.module.id
@@ -171,9 +188,11 @@ export default function LearningFeature({ activeAdvisor, clientsState, cpdModule
             </>
           )}
         </ul>
-        <div className="gaps-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>→ {mockGaps.every(g => completedModules.some(m => m.id === g.courseId)) ? "Great job clearing your knowledge gaps." : "These gaps triggered today's modules"}</span>
-          <a href="#study-history" style={{ color: 'var(--primary-color)', textDecoration: 'none', fontWeight: 'bold' }}>View Study History</a>
+        <div className="gaps-footer" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #cbd8cf' }}>
+          <span>{mockGaps.every(g => completedModules.some(m => m.id === g.courseId)) ? "No new gaps detected. Continue your learning path below to stay ahead of your clients' evolving needs." : "These gaps have been used to prioritize your Smart Learning Path below."}</span>
+          {completedModules.length > 0 && (
+            <a href="#study-history" style={{ color: 'var(--primary-color)', textDecoration: 'none', fontWeight: 'bold' }}>View Study History</a>
+          )}
         </div>
       </div>
 
@@ -192,13 +211,14 @@ export default function LearningFeature({ activeAdvisor, clientsState, cpdModule
               setQuizData({ ...quiz, course: activeCoursePrototype });
               setShowQuizModal(true);
             } else {
-              setCompletedModules((prev) => {
-                if (prev.some((m) => m.id === activeCoursePrototype.id)) return prev;
-                return [...prev, { ...activeCoursePrototype, completedAt: new Date().toISOString() }];
+              setCompletedModulesMap((prev) => {
+                const advisorMods = prev[selectedAdvisorId] || [];
+                if (advisorMods.some((m) => m.id === activeCoursePrototype.id)) return prev;
+                return {
+                  ...prev,
+                  [selectedAdvisorId]: [...advisorMods, { ...activeCoursePrototype, completedAt: new Date().toISOString() }]
+                };
               });
-              setCompletedCpdHours((prev) =>
-                Math.min(cpdTarget, +(prev + (activeCoursePrototype.cpdHours ?? 2.0)).toFixed(1))
-              );
             }
             setActiveCoursePrototype(null);
           }}
@@ -220,16 +240,16 @@ export default function LearningFeature({ activeAdvisor, clientsState, cpdModule
                 <div className="readiness-split" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                   <div className="readiness-col">
                     <strong>Learning Readiness</strong>
-                    <p>• CPD Progress: {safeImpact.cpdReadiness || 0}% on track</p>
+                    <p>• CPD Progress: {Math.round((completedCpdHours / cpdTarget) * 100)}% on track</p>
                     <p>• Next milestone: Aug 31</p>
                     <p>• On track for compliance</p>
                   </div>
                   <div className="readiness-col">
                     <strong>Activity Tracker</strong>
-                    {(safeImpact.followUpCompletion || 0) > 0 ? (
+                    {(selectedAdvisor.retentionRate || 0) > 0 ? (
                       <>
-                        <p>• Follow-up completion: {safeImpact.followUpCompletion}%</p>
-                        <p>• (32 of 43 follow-ups sent)</p>
+                        <p>• Follow-up completion: {selectedAdvisor.retentionRate}%</p>
+                        <p>• ({Math.round(selectedAdvisor.retentionRate * 0.43)} of 43 follow-ups sent)</p>
                       </>
                     ) : (
                       <>
@@ -327,64 +347,70 @@ function LearningPanel({ cpd, completedModules, onStartCourse, cpdRecommendation
       <PanelHeader title="Smart Learning Path" meta="Portfolio-Matched Courses" />
       <div className="stack">
         {isGeneratingLearningPath ? (
-          <div style={{ fontStyle: 'italic', color: 'var(--text-secondary)', padding: '10px' }}>
-            🔄 AI is analyzing your portfolio to build a learning path...
+          <div style={{ padding: '30px 20px', textAlign: 'center', backgroundColor: '#fbfdfb', borderRadius: '8px', border: '1px dashed #cbd8cf' }}>
+            <span style={{ fontSize: '1.2rem', display: 'block', marginBottom: '10px' }}>🔄</span>
+            <span style={{ fontStyle: 'italic', color: 'var(--text-secondary)' }}>AI is analyzing your portfolio to build a learning path...</span>
           </div>
         ) : (
-          recommendedMod && !completedModules.some((m) => m.id === recommendedMod.id) && (
-            <article className="course-card list-row featured-course" style={{ borderLeft: '4px solid var(--primary-color)', backgroundColor: 'var(--surface-color)' }}>
-              <div className="course-card-content">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--primary-color)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⭐ AI Recommended</span>
+          <>
+            {recommendedMod && !completedModules.some((m) => m.id === recommendedMod.id) && (
+              <article className="course-card list-row featured-course" style={{ borderLeft: '4px solid var(--primary-color)', backgroundColor: 'var(--surface-color)' }}>
+                <div className="course-card-content">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--primary-color)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⭐ AI Recommended</span>
+                    <span style={{ fontSize: '0.75rem', color: '#b75537', backgroundColor: '#fff3ef', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>🔥 Top Priority</span>
+                  </div>
+                  <strong>{recommendedMod.title}</strong>
+                  <div className="course-card-meta">
+                    <span>🎯 Portfolio Match: 100%</span>
+                    <span>🏆 {recommendedMod.cpdHours ?? 2.0} CPD hrs</span>
+                    <span>⏱️ ~{Math.round((recommendedMod.cpdHours ?? 2.0) * 45)} min</span>
+                  </div>
+                  <div className="course-card-status" style={{ flexDirection: 'column', alignItems: 'flex-start', marginTop: '8px', padding: '8px', backgroundColor: 'var(--bg-color)', borderRadius: '4px', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '500' }}>Strategic Reasoning:</span>
+                    <span style={{ fontStyle: 'italic', lineHeight: '1.4' }}>{cpdRecommendation.strategicReasoning}</span>
+                  </div>
                 </div>
-                <strong>{recommendedMod.title}</strong>
-                <div className="course-card-meta">
-                  <span>🎯 Portfolio Match: 100%</span>
-                  <span>⏱️ {recommendedMod.cpdHours ?? 2.0} CPD hrs</span>
-                </div>
-                <div className="course-card-status" style={{ flexDirection: 'column', alignItems: 'flex-start', marginTop: '8px', padding: '8px', backgroundColor: 'var(--bg-color)', borderRadius: '4px', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '500' }}>Strategic Reasoning:</span>
-                  <span style={{ fontStyle: 'italic', lineHeight: '1.4' }}>{cpdRecommendation.strategicReasoning}</span>
-                </div>
-              </div>
-              <button className="btn primary-action course-start-btn" onClick={() => onStartCourse(recommendedMod)} style={{ alignSelf: 'flex-start', marginTop: '10px' }}>
-                Start Course →
-              </button>
-            </article>
-          )
-        )}
+                <button className="btn primary-action course-start-btn" onClick={() => onStartCourse(recommendedMod)} style={{ alignSelf: 'flex-start', marginTop: '10px' }}>
+                  Start Course →
+                </button>
+              </article>
+            )}
 
-        {safeCpd.filter((course) => !completedModules.some((m) => m.id === course.id)).slice(0, 4).map((course) => {
-          const status = course.id === 'cpd-mod-elective-young-family' ? 'In Progress: 60%' : 'Not started';
-          const btnText = status.includes('In Progress') ? 'Continue →' : 'Start Course →';
-          const icon = status.includes('In Progress') ? '📘' : '📗';
-          return (
-            <article className="course-card list-row" key={course.id}>
-              <div className="course-card-content">
-                <strong>{course.title}</strong>
-                <div className="course-card-meta">
-                  <span>🎯 Portfolio Match: {course.matchScore}%</span>
-                  <span>⏱️ {course.cpdHours ?? 2.0} CPD hrs</span>
-                </div>
-                <div className="course-card-status">
-                  <span>{icon} {status}</span>
-                  {status.includes('In Progress') && (
-                    <div className="progress-bar-mini">
-                      <div className="fill" style={{ width: '60%' }}></div>
+            {safeCpd.filter((course) => !completedModules.some((m) => m.id === course.id)).slice(0, 4).map((course) => {
+              const status = course.id === 'cpd-mod-elective-young-family' ? 'In Progress: 60%' : 'Not started';
+              const btnText = status.includes('In Progress') ? 'Continue →' : 'Start Course →';
+              const icon = status.includes('In Progress') ? '📘' : '📗';
+              return (
+                <article className="course-card list-row" key={course.id}>
+                  <div className="course-card-content">
+                    <strong>{course.title}</strong>
+                    <div className="course-card-meta">
+                      <span>🎯 Portfolio Match: {course.matchScore}%</span>
+                      <span>🏆 {course.cpdHours ?? 2.0} CPD hrs</span>
+                      <span>⏱️ ~{Math.round((course.cpdHours ?? 2.0) * 45)} min</span>
                     </div>
-                  )}
-                </div>
-              </div>
-              <button className="btn secondary-action course-start-btn" onClick={() => onStartCourse(course)}>
-                {btnText}
-              </button>
-            </article>
-          );
-        })}
-        {safeCpd.filter((course) => !completedModules.some((m) => m.id === course.id)).length === 0 && !recommendedMod && (
-          <p className="empty-state" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>
-            🎉 You have completed all portfolio-matched courses!
-          </p>
+                    <div className="course-card-status">
+                      <span>{icon} {status}</span>
+                      {status.includes('In Progress') && (
+                        <div className="progress-bar-mini">
+                          <div className="fill" style={{ width: '60%' }}></div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <button className="btn secondary-action course-start-btn" onClick={() => onStartCourse(course)}>
+                    {btnText}
+                  </button>
+                </article>
+              );
+            })}
+            {safeCpd.filter((course) => !completedModules.some((m) => m.id === course.id)).length === 0 && !recommendedMod && (
+              <p className="empty-state" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>
+                🎉 You have completed all portfolio-matched courses!
+              </p>
+            )}
+          </>
         )}
       </div>
     </section>
@@ -393,7 +419,7 @@ function LearningPanel({ cpd, completedModules, onStartCourse, cpdRecommendation
 
 function CpdProgressGauge({ completed, target }) {
   const pct = Math.min(100, Math.round((completed / target) * 100));
-  const radius = 64;
+  const radius = 74;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (pct / 100) * circumference;
 
@@ -401,48 +427,53 @@ function CpdProgressGauge({ completed, target }) {
     <section className="panel cpd-gauge-panel" style={{ padding: '24px', position: 'relative', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '150px', height: '150px', background: 'radial-gradient(circle, rgba(19, 95, 78, 0.08) 0%, rgba(255,255,255,0) 70%)', borderRadius: '50%' }}></div>
       <PanelHeader title="CPD Progress" meta={`${pct}% complete`} />
-      <div className="cpd-gauge-container" style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px 0' }}>
+      
+      <div className="cpd-gauge-container" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0 0 0' }}>
         
         {/* Glow effect under the SVG */}
-        <div style={{ position: 'absolute', width: '110px', height: '110px', borderRadius: '50%', boxShadow: '0 0 40px rgba(19, 95, 78, 0.15)' }}></div>
+        <div style={{ position: 'absolute', top: '50px', width: '130px', height: '130px', borderRadius: '50%', boxShadow: '0 0 50px rgba(19, 95, 78, 0.12)' }}></div>
         
-        <svg className="cpd-gauge-svg" viewBox="0 0 160 160" style={{ width: '170px', height: '170px', transform: 'rotate(-90deg)', dropShadow: '0px 4px 10px rgba(0,0,0,0.1)' }}>
-          <defs>
-            <linearGradient id="cpdGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#1dd1a1" />
-              <stop offset="100%" stopColor="#10ac84" />
-            </linearGradient>
-            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
-          <circle 
-            cx="80" 
-            cy="80" 
-            r={radius} 
-            fill="none" 
-            stroke="#edf2ee" 
-            strokeWidth="12" 
-          />
-          <circle 
-            cx="80" 
-            cy="80" 
-            r={radius} 
-            fill="none" 
-            stroke="url(#cpdGradient)" 
-            strokeWidth="12" 
-            strokeLinecap="round" 
-            strokeDasharray={circumference} 
-            strokeDashoffset={strokeDashoffset} 
-            style={{ transition: 'stroke-dashoffset 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }}
-          />
-        </svg>
-        <div className="cpd-gauge-label" style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <strong style={{ fontSize: '2.4rem', fontWeight: '900', color: '#10ac84', lineHeight: '1' }}>{completed}</strong>
-          <span style={{ fontSize: '0.9rem', color: '#66756e', fontWeight: '600', marginTop: '2px' }}>/ {target} hrs</span>
-          <span style={{ marginTop: '8px', padding: '4px 10px', background: '#eef6f2', color: '#135f4e', fontSize: '0.7rem', borderRadius: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            {pct >= 100 ? 'Target Met' : 'On Track'}
+        <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <svg className="cpd-gauge-svg" viewBox="0 0 180 180" style={{ width: '190px', height: '190px', transform: 'rotate(-90deg)', filter: 'drop-shadow(0px 4px 6px rgba(0,0,0,0.05))' }}>
+            <defs>
+              <linearGradient id="cpdGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#1dd1a1" />
+                <stop offset="100%" stopColor="#10ac84" />
+              </linearGradient>
+            </defs>
+            <circle 
+              cx="90" 
+              cy="90" 
+              r={radius} 
+              fill="none" 
+              stroke="#edf2ee" 
+              strokeWidth="12" 
+            />
+            <circle 
+              cx="90" 
+              cy="90" 
+              r={radius} 
+              fill="none" 
+              stroke="url(#cpdGradient)" 
+              strokeWidth="12" 
+              strokeLinecap="round" 
+              strokeDasharray={circumference} 
+              strokeDashoffset={strokeDashoffset} 
+              style={{ transition: 'stroke-dashoffset 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }}
+            />
+          </svg>
+          <div className="cpd-gauge-label" style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <strong style={{ fontSize: '2.8rem', fontWeight: '900', color: '#10ac84', lineHeight: '1' }}>{completed}</strong>
+            <span style={{ fontSize: '1rem', color: '#66756e', fontWeight: '600', marginTop: '4px' }}>/ {target} hrs</span>
+            <span style={{ marginTop: '12px', padding: '4px 12px', background: '#eef6f2', color: '#135f4e', fontSize: '0.75rem', borderRadius: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              {pct >= 100 ? 'Target Met' : 'On Track'}
+            </span>
+          </div>
+        </div>
+        
+        <div style={{ marginTop: '15px', textAlign: 'center' }}>
+          <span style={{ fontSize: '0.75rem', color: '#8a9a92', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>
+            SC Regulatory Requirement
           </span>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/pitch", "/api", "/_next", "/favicon.ico"];
+// Note: /api/agent/morning is hit by Vercel cron — public match above covers it.
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

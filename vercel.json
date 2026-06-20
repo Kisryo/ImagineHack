@@ -3,5 +3,8 @@
   "buildCommand": "next build",
   "devCommand": "next dev",
   "installCommand": "npm install",
-  "regions": ["sin1"]
+  "regions": ["sin1"],
+  "crons": [
+    { "path": "/api/agent/morning", "schedule": "0 23 * * 0-4" }
+  ]
 }

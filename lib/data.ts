@@ -214,6 +214,43 @@ export async function resetDemo() {
   auditLog.length = 0;
 }
 
+export type MeetingCoach = {
+  safe: string[];     // 🟢 topics that engage this client
+  avoid: string[];    // 🔴 sensitivities and sore points
+  explore: string[];  // 🟡 open commitments + recently raised topics
+};
+
+export async function getMeetingCoach(clientId: string): Promise<MeetingCoach> {
+  const notes = usingSupabase
+    ? await db.listInteractions(clientId)
+    : interactions.filter((i) => i.clientId === clientId);
+
+  // 🟢 Safe: positive relational signals (lights up, engages, warms)
+  const safe = Array.from(new Set(
+    notes.flatMap((n) => n.relational ?? [])
+      .filter((r) => /light|engage|warm|excite|open|positive|comfort|family|love/i.test(r))
+  )).slice(0, 5);
+
+  // 🔴 Avoid: every sensitivity + relational signals that flag friction
+  const avoid = Array.from(new Set([
+    ...notes.flatMap((n) => n.sensitivities ?? []),
+    ...notes.flatMap((n) => n.relational ?? [])
+      .filter((r) => /shut|avoid|sore|defens|reluctan|past|burned|grievance|never/i.test(r))
+  ])).slice(0, 5);
+
+  // 🟡 Explore: open commitments + recent topics that haven't been closed
+  const recentTopics = Array.from(new Set(
+    notes.slice(0, 3).flatMap((n) => n.topics ?? [])
+  ));
+  const openCommitments = notes.flatMap((n) => n.commitments ?? []);
+  const explore = Array.from(new Set([
+    ...openCommitments,
+    ...recentTopics.map((t) => `${t} — recently raised`)
+  ])).slice(0, 5);
+
+  return { safe, avoid, explore };
+}
+
 export async function listCommitments(): Promise<{ clientId: string; clientName: string; text: string; date: string }[]> {
   const out: { clientId: string; clientName: string; text: string; date: string }[] = [];
   for (const c of clients) {

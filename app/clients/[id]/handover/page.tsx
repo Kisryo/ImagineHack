@@ -1,6 +1,7 @@
 import { getClient, generateHandover } from "@/lib/data";
 import { notFound } from "next/navigation";
 import { PrintButton } from "@/components/PrintButton";
+import { TrafficLightCard } from "@/components/TrafficLightCard";
 
 export default async function HandoverPage({ params }: { params: { id: string } }) {
   const client = await getClient(params.id);
@@ -21,6 +22,10 @@ export default async function HandoverPage({ params }: { params: { id: string } 
       <Section title="Who they are">
         <p className="text-sm">{pack.summary}</p>
       </Section>
+
+      {/* @ts-expect-error Async Server Component */}
+      <TrafficLightCard clientId={params.id} dense />
+
 
       <Section title="How to work with them">
         <ul className="text-sm space-y-1 list-disc pl-5">

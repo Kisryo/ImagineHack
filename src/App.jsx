@@ -52,13 +52,9 @@ const seededReferrals = referralOutcomes.map((referral) => {
 
 const advisorRoutes = [
   ["/advisor/today", "Today"],
-  ["/advisor/clients", "Clients"],
-  ["/advisor/client", "Cockpit"],
-  ["/advisor/actions", "Actions"],
-  ["/advisor/telegram", "Telegram Bot"],
-  ["/advisor/partners", "Partners"],
+  ["/advisor/client", "Client Cockpit"],
+  ["/advisor/actions", "Action Workspace"],
   ["/advisor/learning", "Learning"],
-  ["/advisor/claims", "Claims"],
 ];
 
 const adminRoutes = [
@@ -152,6 +148,7 @@ function App() {
   const [expenseAmount, setExpenseAmount] = useState("38");
   const [composerMode, setComposerMode] = useState("follow-up");
   const [telegramStatus, setTelegramStatus] = useState({ tone: "idle", text: "" });
+  const [telegramDraftBody, setTelegramDraftBody] = useState("");
 
   const role = activeProfile.role;
   const activeAdvisor = role === "Advisor" ? activeProfile : people.find((person) => person.role === "Advisor") ?? advisor;
@@ -227,6 +224,12 @@ function App() {
     },
     [composerMode, activeClient, careMoments, relationshipDraft, partnerMatches, nextActions]
   );
+
+  useEffect(() => {
+    setTelegramDraftBody(generatedDraft.body);
+    setTelegramStatus({ tone: "idle", text: "" });
+  }, [generatedDraft.body, activeClient.id]);
+
   const businessImpactRows = useMemo(
     () => summarizeBusinessImpact(businessImpactRowsState, clientsState, referrals),
     [businessImpactRowsState, clientsState, referrals]
@@ -481,6 +484,15 @@ function App() {
 
   async function approveComposerDraft() {
     setTelegramStatus({ tone: "idle", text: "" });
+    const messageToSend = telegramDraftBody.trim();
+
+    if (!messageToSend) {
+      setTelegramStatus({
+        tone: "error",
+        text: "Telegram message cannot be empty.",
+      });
+      return;
+    }
 
     if (consentLocked) {
       blockForConsent("Telegram message sending");
@@ -507,7 +519,7 @@ function App() {
       const result = await sendTelegramMessage({
         clientId: activeClient.id,
         subject: generatedDraft.subject,
-        message: generatedDraft.body,
+        message: messageToSend,
       });
 
       if (result.localOnly) {
@@ -526,11 +538,11 @@ function App() {
     }
 
     if (composerMode === "referral") {
-      createReferral(partnerMatches[0], generatedDraft.body);
+      createReferral(partnerMatches[0], messageToSend);
       return;
     }
     if (composerMode === "compliance") {
-      requestConsentRefresh(generatedDraft.body);
+      requestConsentRefresh(messageToSend);
       return;
     }
     createFollowUp(nextActions[0]?.title ?? generatedDraft.subject, "copilot");
@@ -599,6 +611,8 @@ function App() {
               setComposerMode={setComposerMode}
               setExpenseAmount={setExpenseAmount}
               setFollowUpText={setFollowUpText}
+              setTelegramDraftBody={setTelegramDraftBody}
+              telegramDraftBody={telegramDraftBody}
               telegramReady={telegramReady}
               telegramStatus={telegramStatus}
               completeTask={completeTask}
@@ -764,6 +778,8 @@ function AdvisorExperience(props) {
     setComposerMode,
     setExpenseAmount,
     setFollowUpText,
+    setTelegramDraftBody,
+    telegramDraftBody,
     telegramReady,
     telegramStatus,
     completeTask,
@@ -836,7 +852,13 @@ function AdvisorExperience(props) {
   if (route === "/advisor/client") {
     return (
       <div className="page-stack">
-        {clientQueue}
+        <SelectedClientBar
+          activeClient={activeClient}
+          activeTasks={activeTasks}
+          clientTier={clientTier}
+          consentLocked={consentLocked}
+          telegramReady={telegramReady}
+        />
         <div className="content-grid">
           <ClientMemory activeClient={activeClient} />
           <ClientTierPanel
@@ -865,49 +887,61 @@ function AdvisorExperience(props) {
 
   if (route === "/advisor/actions") {
     return (
-      <div className="content-grid three">
-        <ActionComposer
-          composerMode={composerMode}
-          consentLocked={consentLocked}
-          generatedDraft={generatedDraft}
-          onApproveDraft={onApproveDraft}
-          setComposerMode={setComposerMode}
-          telegramReady={telegramReady}
-          telegramStatus={telegramStatus}
-        />
-        <FollowUpManager
-          activeTasks={activeTasks}
-          completeTask={completeTask}
-          consentLocked={consentLocked}
-          createFollowUp={createFollowUp}
-          followUpText={followUpText}
-          setFollowUpText={setFollowUpText}
-        />
-        <RelationshipActionPlan careMoments={careMoments} giftRecommendation={giftRecommendation} />
-        <CompliancePanel
-          activeClient={activeClient}
-          complianceRisk={complianceRisk}
-          consentLocked={consentLocked}
-          requestConsentRefresh={requestConsentRefresh}
-        />
-      </div>
-    );
-  }
-
-  if (route === "/advisor/telegram") {
-    return (
       <div className="page-stack">
-        {clientQueue}
+        <SelectedClientBar
+          activeClient={activeClient}
+          activeTasks={activeTasks}
+          clientTier={clientTier}
+          consentLocked={consentLocked}
+          telegramReady={telegramReady}
+        />
         <div className="content-grid">
           <TelegramBotConsole
             activeClient={activeClient}
+            composerMode={composerMode}
             consentLocked={consentLocked}
             generatedDraft={generatedDraft}
             onSend={onApproveDraft}
+            setComposerMode={setComposerMode}
+            setTelegramDraftBody={setTelegramDraftBody}
+            telegramDraftBody={telegramDraftBody}
             telegramReady={telegramReady}
             telegramStatus={telegramStatus}
           />
           <TelegramBotWorkflow activeClient={activeClient} />
+        </div>
+        <div className="content-grid three">
+          <FollowUpManager
+            activeTasks={activeTasks}
+            completeTask={completeTask}
+            consentLocked={consentLocked}
+            createFollowUp={createFollowUp}
+            followUpText={followUpText}
+            setFollowUpText={setFollowUpText}
+          />
+          <RelationshipActionPlan careMoments={careMoments} giftRecommendation={giftRecommendation} />
+          <CompliancePanel
+            activeClient={activeClient}
+            complianceRisk={complianceRisk}
+            consentLocked={consentLocked}
+            requestConsentRefresh={requestConsentRefresh}
+          />
+        </div>
+        <div className="content-grid">
+          <PartnerRadar
+            activeClient={activeClient}
+            consentLocked={consentLocked}
+            createReferral={createReferral}
+            partnerMatches={partnerMatches}
+          />
+          <ReferralExpensePanel
+            activeExpenses={activeExpenses}
+            activeReferrals={activeReferrals}
+            consentLocked={consentLocked}
+            createExpense={createExpense}
+            expenseAmount={expenseAmount}
+            setExpenseAmount={setExpenseAmount}
+          />
         </div>
       </div>
     );
@@ -974,10 +1008,10 @@ function AdvisorExperience(props) {
       <section className="command-hero">
         <div>
           <p className="eyebrow">Advisor Today</p>
-          <h2>One client signal becomes a governed advisor action plan.</h2>
+          <h2>Choose the right client, then move into action.</h2>
           <p>
-            AdvisorFlow connects client memory, CPD, partner matching, follow-ups, expense controls,
-            and audit visibility into one morning command centre.
+            Today is the decision page: scan the priority queue, understand the top care moments,
+            then open the cockpit or action workspace for the selected client.
           </p>
         </div>
         <div className="impact-strip">
@@ -989,13 +1023,14 @@ function AdvisorExperience(props) {
 
       <section className="panel">
         <PanelHeader title="Morning Command Brief" meta="Generated 08:00 MYT" />
-        <div className="brief-grid">
-          {morningBrief.map((item) => (
-            <article className="brief-card" key={item}>
-              {item}
-            </article>
+        <ul className="command-brief-list">
+          {morningBrief.map((item, index) => (
+            <li key={item}>
+              <b>{index + 1}</b>
+              <span>{item}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       </section>
       <div className="content-grid">
         {clientQueue}
@@ -1011,6 +1046,33 @@ function AdvisorExperience(props) {
         />
       </div>
     </div>
+  );
+}
+
+function SelectedClientBar({ activeClient, activeTasks, clientTier, consentLocked, telegramReady }) {
+  return (
+    <section className={`selected-client-bar ${consentLocked ? "locked" : ""}`}>
+      <div>
+        <span>Selected client</span>
+        <strong>{displayClientName(activeClient)}</strong>
+      </div>
+      <div>
+        <span>Priority</span>
+        <strong>{consentLocked ? "Hold" : clientTier.tier}</strong>
+      </div>
+      <div>
+        <span>Consent</span>
+        <strong>{activeClient.consentStatus}</strong>
+      </div>
+      <div>
+        <span>Telegram</span>
+        <strong>{telegramReady ? "Ready" : "Setup needed"}</strong>
+      </div>
+      <div>
+        <span>Open actions</span>
+        <strong>{activeTasks.length}</strong>
+      </div>
+    </section>
   );
 }
 
@@ -1091,24 +1153,30 @@ function RelationshipSuggestionsPanel({
       <div className="suggestion-grid">
         <article>
           <span>Gift guardrail</span>
-          <strong>{giftRecommendation.recommendation}</strong>
-          <p>{giftRecommendation.rationale}</p>
+          <div>
+            <strong>{giftRecommendation.recommendation}</strong>
+            <p>{giftRecommendation.rationale}</p>
+          </div>
           <b>{giftRecommendation.allowed ? giftRecommendation.budget : "Blocked"}</b>
         </article>
         <article>
           <span>Best slot</span>
-          <strong>{meetingRecommendation.slot}</strong>
-          <p>{meetingRecommendation.reason}</p>
+          <div>
+            <strong>{meetingRecommendation.slot}</strong>
+            <p>{meetingRecommendation.reason}</p>
+          </div>
           <b>{meetingRecommendation.channel}</b>
         </article>
         <article>
           <span>Telegram bridge</span>
-          <strong>{activeClient.telegramOptIn ? "Client opted in" : "Opt-in needed"}</strong>
-          <p>
-            {activeClient.telegramChatId
-              ? "Chat ID is saved. Advisor can send after reviewing the draft."
-              : "Add telegram_chat_id after the client starts the bot."}
-          </p>
+          <div>
+            <strong>{activeClient.telegramOptIn ? "Client opted in" : "Opt-in needed"}</strong>
+            <p>
+              {activeClient.telegramChatId
+                ? "Chat ID is saved. Advisor can send after reviewing the draft."
+                : "Add telegram_chat_id after the client starts the bot."}
+            </p>
+          </div>
           <b>{activeClient.telegramOptIn && activeClient.telegramChatId ? "Ready" : "Not ready"}</b>
         </article>
       </div>
@@ -1148,9 +1216,13 @@ function RelationshipActionPlan({ careMoments, giftRecommendation }) {
 
 function TelegramBotConsole({
   activeClient,
+  composerMode,
   consentLocked,
   generatedDraft,
   onSend,
+  setComposerMode,
+  setTelegramDraftBody,
+  telegramDraftBody,
   telegramReady,
   telegramStatus,
 }) {
@@ -1188,16 +1260,42 @@ function TelegramBotConsole({
         ))}
       </div>
 
+      <div className="mode-switch bot-mode-switch">
+        {[
+          ["follow-up", "Care note"],
+          ["referral", "Referral"],
+          ["compliance", "Escalation"],
+        ].map(([mode, label]) => (
+          <button
+            className={composerMode === mode ? "active" : ""}
+            key={mode}
+            onClick={() => setComposerMode(mode)}
+            type="button"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="bot-chat-preview">
         <article className="bot-bubble bot">
           <span>AdvisorFlow Bot</span>
-          <p>{generatedDraft.body}</p>
+          <p>{telegramDraftBody || generatedDraft.body}</p>
         </article>
         <article className="bot-bubble client">
           <span>Client</span>
           <p>Receives this in Telegram after the advisor clicks send.</p>
         </article>
       </div>
+
+      <label className="telegram-editor">
+        Edit before sending
+        <textarea
+          onChange={(event) => setTelegramDraftBody(event.target.value)}
+          rows="7"
+          value={telegramDraftBody}
+        />
+      </label>
 
       {telegramStatus.text && (
         <p className={`delivery-status delivery-${telegramStatus.tone}`}>
@@ -1313,6 +1411,8 @@ function ActionComposer({
   generatedDraft,
   onApproveDraft,
   setComposerMode,
+  setTelegramDraftBody,
+  telegramDraftBody,
   telegramReady,
   telegramStatus,
 }) {
@@ -1338,7 +1438,14 @@ function ActionComposer({
       <div className="draft-box">
         <span>{generatedDraft.channel}</span>
         <strong>{generatedDraft.subject}</strong>
-        <p>{generatedDraft.body}</p>
+        <label className="telegram-editor compact">
+          Message to send
+          <textarea
+            onChange={(event) => setTelegramDraftBody(event.target.value)}
+            rows="6"
+            value={telegramDraftBody}
+          />
+        </label>
         <ul>
           {generatedDraft.disclaimers.map((item) => (
             <li key={item}>{item}</li>

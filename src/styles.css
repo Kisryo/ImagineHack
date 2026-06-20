@@ -315,7 +315,6 @@ h3 {
 }
 
 .impact-strip,
-.brief-grid,
 .metrics-grid,
 .content-grid,
 .insight-grid {
@@ -328,7 +327,6 @@ h3 {
 }
 
 .impact-stat,
-.brief-card,
 .metric,
 .tier-distribution article {
   min-width: 0;
@@ -372,16 +370,40 @@ h3 {
   font-weight: 850;
 }
 
-.brief-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.command-brief-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.brief-card {
-  min-height: 118px;
-  border-left: 4px solid #b88238;
-  background: #fff8ed;
-  font-size: 0.93rem;
-  font-weight: 700;
+.command-brief-list li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid #dbe5dd;
+  border-radius: 10px;
+  background: #fbfdfb;
+}
+
+.command-brief-list b {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #135f4e;
+  font-size: 0.78rem;
+}
+
+.command-brief-list span {
+  color: #40554c;
+  font-weight: 760;
+  line-height: 1.38;
 }
 
 .client-strip {
@@ -432,6 +454,47 @@ h3 {
   font-size: 0.76rem;
   font-style: normal;
   font-weight: 850;
+}
+
+.selected-client-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.25fr) repeat(4, minmax(120px, 0.6fr));
+  gap: 8px;
+  align-items: stretch;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(207, 218, 211, 0.9);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 16px 36px rgba(47, 67, 57, 0.06);
+}
+
+.selected-client-bar.locked {
+  border-color: #e6ad9a;
+  background: #fff7f3;
+}
+
+.selected-client-bar div {
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: #f7fbf8;
+}
+
+.selected-client-bar span {
+  display: block;
+  color: #66756e;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.selected-client-bar strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #203a31;
+  font-size: 0.95rem;
+  line-height: 1.25;
 }
 
 .content-grid {
@@ -749,8 +812,29 @@ h3 {
 }
 
 .suggestion-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   margin-bottom: 12px;
+}
+
+.suggestion-grid article {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.suggestion-grid article > div {
+  min-width: 0;
+}
+
+.suggestion-grid strong,
+.suggestion-grid p {
+  overflow-wrap: anywhere;
+}
+
+.suggestion-grid b {
+  min-width: 72px;
+  text-align: right;
+  white-space: normal;
 }
 
 .relationship-draft {
@@ -878,6 +962,43 @@ h3 {
 .bot-bubble.client span,
 .bot-bubble.client p {
   color: #ffffff;
+}
+
+.bot-mode-switch {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.telegram-editor {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+  color: #52665d;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.telegram-editor.compact {
+  margin: 10px 0 0;
+}
+
+.telegram-editor textarea {
+  width: 100%;
+  min-height: 128px;
+  padding: 11px 12px;
+  border: 1px solid #d5ded7;
+  border-radius: 10px;
+  color: #203a31;
+  background: #ffffff;
+  font: inherit;
+  line-height: 1.45;
+  outline: none;
+  resize: vertical;
+}
+
+.telegram-editor textarea:focus {
+  border-color: #135f4e;
+  box-shadow: 0 0 0 3px rgba(19, 95, 78, 0.12);
 }
 
 .tier-distribution {
@@ -1349,9 +1470,9 @@ h3 {
   }
 
   .command-hero,
-  .brief-grid,
   .metrics-grid,
-  .client-strip {
+  .client-strip,
+  .selected-client-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1387,9 +1508,9 @@ h3 {
   .side-nav,
   .action-rail,
   .command-hero,
-  .brief-grid,
   .metrics-grid,
   .client-strip,
+  .selected-client-bar,
   .content-grid,
   .content-grid.three,
   .memory-layout,
@@ -1431,9 +1552,15 @@ h3 {
   }
 
   .partner-card,
+  .suggestion-grid article,
   .pipeline-row,
   .audit-table article {
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .suggestion-grid b {
+    min-width: 0;
+    text-align: left;
   }
 }

@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+body { @apply bg-compass-soft text-compass-ink; }
+
+@media print {
+  header, footer, .no-print { display: none !important; }
+  body { background: white; }
+  main { max-width: none !important; padding: 0 !important; }
+  .print-card { box-shadow: none !important; border: 1px solid #e5e7eb; }
+}

@@ -478,7 +478,30 @@ export async function sendTelegramMessage({ clientId, message, subject }) {
     },
   });
 
-  if (error) throw error;
+  if (error) {
+    let detail = "";
+    try {
+      const response = error.context?.response;
+      if (response) {
+        const text = await response.clone().text();
+        if (text) {
+          try {
+            const parsed = JSON.parse(text);
+            detail = parsed.error || parsed.message || text;
+          } catch {
+            detail = text;
+          }
+        }
+      }
+    } catch {
+      // ignore - fall back to default error.message below
+    }
+    const enriched = new Error(detail || error.message || "Telegram Edge Function failed.");
+    enriched.name = error.name || "FunctionsHttpError";
+    enriched.edgeFunctionFailure = true;
+    enriched.cause = error;
+    throw enriched;
+  }
   if (!data?.ok) {
     throw new Error(data?.error || "Telegram message was not sent.");
   }

@@ -40,7 +40,7 @@ import {
   signInAdvisorFlow,
   signOutAdvisorFlow,
 } from "./services/advisorFlowService.js";
-import { generateClientProfile } from "./services/openaiClient.js";
+import { generateClientProfile, generateTailoredTelegramMessage } from "./services/openaiClient.js";
 import LearningFeature from "./LearningFeature.jsx";
 
 const advisor = advisors.find((person) => person.role === "Advisor");
@@ -58,8 +58,8 @@ const advisorRoutes = [
   { path: "/advisor/today", label: "HomePage" },
   { path: "/advisor/clients", label: "Client" },
   { path: "/advisor/client", label: "Client Detail", hidden: true },
-  { path: "/advisor/actions", label: "Action Workspace", nested: true },
   { path: "/advisor/ai-profile", label: "AI Profile", nested: true },
+  { path: "/advisor/actions", label: "Action Workspace", nested: true },
   { path: "/advisor/partners", label: "Partners" },
   { path: "/advisor/learning", label: "Learning" },
   { path: "/advisor/claims", label: "Claims", hidden: true },
@@ -166,12 +166,18 @@ function App() {
   const [telegramDraftBody, setTelegramDraftBody] = useState("");
   const [hasClientContext, setHasClientContext] = useState(false);
   const [draftContext, setDraftContext] = useState(null);
+  const [careMomentProgress, setCareMomentProgress] = useState({});
+  const [activeMomentId, setActiveMomentId] = useState(null);
 
   const role = activeProfile.role;
   const activeAdvisor = role === "Advisor" ? activeProfile : people.find((person) => person.role === "Advisor") ?? advisor;
   const activeAdmin = role === "Admin" ? activeProfile : people.find((person) => person.role === "Admin") ?? admin;
   const activeClient = clientsState.find((client) => client.id === activeClientId) ?? clientsState[0] ?? clients[0];
   const activeTasks = tasks.filter((task) => task.clientId === activeClient.id && task.status !== "Done");
+  const recentDoneTasks = tasks
+    .filter((task) => task.clientId === activeClient.id && task.status === "Done")
+    .sort((a, b) => String(b.completedAt ?? b.id).localeCompare(String(a.completedAt ?? a.id)))
+    .slice(0, 5);
   const activeExpenses = expenses.filter((expense) => expense.clientId === activeClient.id);
   const activeReferrals = referrals.filter((referral) => referral.clientId === activeClient.id);
   const consentLocked = activeClient.consentStatus !== "Verified";
@@ -202,6 +208,39 @@ function App() {
   const clientValueScore = useMemo(() => calculateClientValueScore(activeClient), [activeClient]);
   const clientTier = useMemo(() => deriveClientTier(clientValueScore.score), [clientValueScore]);
   const careMoments = useMemo(() => detectCareMoments(activeClient, tasks), [activeClient, tasks]);
+  const clientMomentProgress = careMomentProgress[activeClient.id] ?? {};
+  const pendingCareMoments = useMemo(
+    () => careMoments.filter((moment) => clientMomentProgress[moment.id]?.status !== "done"),
+    [careMoments, clientMomentProgress]
+  );
+  const doneCareMoments = useMemo(
+    () =>
+      careMoments
+        .filter((moment) => clientMomentProgress[moment.id]?.status === "done")
+        .map((moment) => ({ ...moment, progress: clientMomentProgress[moment.id] })),
+    [careMoments, clientMomentProgress]
+  );
+  const activeCareMoment = useMemo(() => {
+    if (pendingCareMoments.length === 0) return null;
+    const selected = pendingCareMoments.find((moment) => moment.id === activeMomentId);
+    return selected ?? pendingCareMoments[0];
+  }, [pendingCareMoments, activeMomentId]);
+
+  function selectCareMoment(momentId) {
+    setActiveMomentId(momentId);
+  }
+
+  function markCareMomentDone(momentId, payload = {}) {
+    if (!momentId) return;
+    setCareMomentProgress((current) => ({
+      ...current,
+      [activeClient.id]: {
+        ...(current[activeClient.id] ?? {}),
+        [momentId]: { status: "done", sentAt: new Date().toISOString(), ...payload },
+      },
+    }));
+    setActiveMomentId(null);
+  }
   const giftRecommendation = useMemo(
     () => recommendGift(activeClient, clientTier),
     [activeClient, clientTier]
@@ -210,15 +249,16 @@ function App() {
     () => suggestMeetingSlot(activeClient, meetingsState, careMoments),
     [activeClient, meetingsState, careMoments]
   );
+  const focusMoment = activeCareMoment ?? careMoments[0] ?? null;
   const relationshipDraft = useMemo(
     () =>
       generateRelationshipMessage(activeClient, {
-        actionTitle: careMoments[0]?.action,
-        careMoment: careMoments[0],
+        actionTitle: focusMoment?.action,
+        careMoment: focusMoment,
         giftRecommendation,
         meetingRecommendation,
       }),
-    [activeClient, careMoments, giftRecommendation, meetingRecommendation]
+    [activeClient, focusMoment, giftRecommendation, meetingRecommendation]
   );
   const nextActions = useMemo(
     () => generateNextBestActions(activeClient, tasks, partnersState, complianceQueueState),
@@ -229,7 +269,7 @@ function App() {
       if (draftContext?.clientId === activeClient.id) {
         return generateDraftMessage(activeClient, draftContext.action, "Telegram");
       }
-      if (composerMode === "follow-up" && careMoments.length > 0) {
+      if (composerMode === "follow-up" && focusMoment) {
         return {
           channel: relationshipDraft.channel,
           subject: relationshipDraft.subject,
@@ -242,17 +282,17 @@ function App() {
           ? partnerMatches[0]?.name ?? "partner referral"
           : composerMode === "compliance"
             ? "consent refresh and audit evidence"
-            : nextActions[0]?.title ?? "client follow-up";
+            : focusMoment?.action ?? nextActions[0]?.title ?? "client follow-up";
       const channel = "Telegram";
       return generateDraftMessage(activeClient, draftAction, channel);
     },
-    [composerMode, activeClient, careMoments, relationshipDraft, partnerMatches, nextActions, draftContext]
+    [composerMode, activeClient, focusMoment, relationshipDraft, partnerMatches, nextActions, draftContext]
   );
 
   useEffect(() => {
     setTelegramDraftBody(generatedDraft.body);
     setTelegramStatus({ tone: "idle", text: "" });
-  }, [generatedDraft.body, activeClient.id]);
+  }, [generatedDraft.body, activeClient.id, focusMoment?.id]);
 
   const businessImpactRows = useMemo(
     () => summarizeBusinessImpact(businessImpactRowsState, clientsState, referrals),
@@ -449,6 +489,23 @@ function App() {
     setFollowUpText("");
   }
 
+  function logCompletedSend({ clientId, title, severity = "medium" }) {
+    if (!title) return;
+    const task = {
+      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-send`,
+      clientId: clientId ?? activeClient.id,
+      title,
+      due: new Date().toISOString().slice(0, 10),
+      status: "Done",
+      severity,
+      completedAt: new Date().toISOString(),
+    };
+    setTasks((current) => [task, ...current]);
+    createTaskRow(task).catch((error) => {
+      console.warn("Supabase task write failed; local task retained.", error);
+    });
+  }
+
   function completeTask(taskId) {
     const targetTask = tasks.find((task) => task.id === taskId);
     const targetClient = clientsState.find((client) => client.id === targetTask?.clientId);
@@ -561,6 +618,30 @@ function App() {
 
     setTelegramStatus({ tone: "sending", text: "Sending Telegram message..." });
 
+    const momentSnapshot = activeCareMoment ? { ...activeCareMoment } : null;
+    const clientSnapshot = { id: activeClient.id, name: activeClient.name };
+    const subjectSnapshot = generatedDraft.subject;
+
+    function markMomentApproved(channelLabel) {
+      const momentLabel = momentSnapshot
+        ? `${momentSnapshot.type}: ${momentSnapshot.title}`
+        : subjectSnapshot;
+      logCompletedSend({
+        clientId: clientSnapshot.id,
+        title: `${channelLabel} - ${momentLabel}`,
+        severity: momentSnapshot?.priority?.toLowerCase() === "high" ? "high" : "medium",
+      });
+      if (momentSnapshot?.id) {
+        markCareMomentDone(momentSnapshot.id, {
+          channel: channelLabel,
+          subject: subjectSnapshot,
+          momentType: momentSnapshot.type,
+          momentTitle: momentSnapshot.title,
+          clientId: clientSnapshot.id,
+        });
+      }
+    }
+
     try {
       const result = await sendTelegramMessage({
         clientId: activeClient.id,
@@ -569,16 +650,29 @@ function App() {
       });
 
       if (result.localOnly) {
-        setTelegramStatus({ tone: "error", text: result.message });
+        setTelegramStatus({
+          tone: "warn",
+          text: `Demo mode: ${result.message} The message is logged to Follow-Up Manager and the care moment is marked done.`,
+        });
+        queueAudit(`Approved (local only) Telegram draft for ${activeClient.name}: ${generatedDraft.subject}`, "Low");
+        markMomentApproved("Local approval");
       } else {
         setTelegramStatus({ tone: "success", text: "Telegram message sent and audited." });
         queueAudit(`Sent Telegram message to ${activeClient.name}: ${generatedDraft.subject}`, "Low");
+        markMomentApproved("Telegram");
       }
     } catch (error) {
-      setTelegramStatus({
-        tone: "error",
-        text: error.message || "Telegram message failed.",
-      });
+      const detail = error.message || "Telegram message failed.";
+      if (error.edgeFunctionFailure) {
+        setTelegramStatus({
+          tone: "warn",
+          text: `Telegram bot not delivered: ${detail}. Common causes: TELEGRAM_BOT_TOKEN missing on the Supabase Edge Function, client never started the bot, or chat_id mismatch. The message is logged to Follow-Up Manager and the care moment is marked done so the demo can continue.`,
+        });
+        queueAudit(`Telegram delivery failed for ${activeClient.name}; approved locally - ${detail}`, "Medium");
+        markMomentApproved("Local approval (Edge failed)");
+        return;
+      }
+      setTelegramStatus({ tone: "error", text: detail });
       queueAudit(`Telegram message failed for ${activeClient.name}`, "Medium");
       return;
     }
@@ -591,7 +685,8 @@ function App() {
       requestConsentRefresh(messageToSend);
       return;
     }
-    createFollowUp(nextActions[0]?.title ?? generatedDraft.subject, "copilot");
+    // logCompletedSend (inside markMomentApproved) already records the send as a Done
+    // follow-up task. No additional createFollowUp call needed here - it just duplicated.
   }
 
   return (
@@ -624,13 +719,18 @@ function App() {
         <div className="route-surface">
           {role === "Advisor" ? (
             <AdvisorExperience
+              activeCareMoment={activeCareMoment}
               activeClient={activeClient}
               activeClientId={activeClientId}
               activeExpenses={activeExpenses}
               activeReferrals={activeReferrals}
               activeTasks={activeTasks}
+              recentDoneTasks={recentDoneTasks}
               businessImpact={businessImpact}
               careMoments={careMoments}
+              doneCareMoments={doneCareMoments}
+              onSelectMoment={selectCareMoment}
+              pendingCareMoments={pendingCareMoments}
               clientBrief={clientBrief}
               clientTier={clientTier}
               clientValueScore={clientValueScore}
@@ -797,19 +897,20 @@ function NavigationShell({ currentPath, hasClientContext, navigate, role }) {
                     >
                       {route.label}
                     </button>
-                    {hasClientContext && (
-                      <button
-                        aria-label={clientNavOpen ? "Hide client subpages" : "Show client subpages"}
-                        className={`nav-toggle ${clientNavOpen ? "active" : ""}`}
-                        onClick={() => setClientNavOpen((current) => !current)}
-                        title={clientNavOpen ? "Hide client subpages" : "Show client subpages"}
-                        type="button"
-                      >
-                        {clientNavOpen ? "^" : "v"}
-                      </button>
-                    )}
+                    <button
+                      aria-expanded={clientNavOpen}
+                      aria-label={clientNavOpen ? "Hide client subpages" : "Show client subpages"}
+                      className={`nav-toggle ${clientNavOpen ? "open" : ""}`}
+                      onClick={() => setClientNavOpen((current) => !current)}
+                      title={clientNavOpen ? "Hide client subpages" : "Show client subpages"}
+                      type="button"
+                    >
+                      <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+                        <path d="M2 4.5 L6 8.5 L10 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
                   </div>
-                  {hasClientContext && clientNavOpen &&
+                  {clientNavOpen &&
                     nestedRoutes.map((nestedRoute) => (
                       <button
                         className={`${currentPath === nestedRoute.path ? "active" : ""} sub-route`}
@@ -844,6 +945,7 @@ function NavigationShell({ currentPath, hasClientContext, navigate, role }) {
 function AdvisorExperience(props) {
   const {
     activeAdvisor,
+    activeCareMoment,
     activeClient,
     activeClientId,
     activeExpenses,
@@ -851,6 +953,10 @@ function AdvisorExperience(props) {
     activeTasks,
     businessImpact,
     careMoments,
+    doneCareMoments,
+    onSelectMoment,
+    pendingCareMoments,
+    recentDoneTasks,
     clientBrief,
     clientTier,
     clientValueScore,
@@ -952,30 +1058,47 @@ function AdvisorExperience(props) {
         </select>
       </div>
       <div className="client-strip">
-        {searchableClients.map((client) => (
-          <button
-            className={`client-tile ${activeClientId === client.id ? "selected" : ""} ${
-              client.consentStatus === "Verified" ? "" : "locked"
-            }`}
-            key={client.id}
-            onClick={() => {
-              selectClient(client.id);
-              navigate("/advisor/client");
-            }}
-            type="button"
-          >
-            <span>{displayClientName(client)}</span>
-            <strong>{client.consentStatus === "Verified" ? client.tier : "Hold"}</strong>
-            {client.consentStatus === "Verified" && (
-              <em>{client.valueScore}/100 value score</em>
-            )}
-            <small>
-              {client.consentStatus === "Verified"
-                ? `${client.tierDescription} / ${client.prioritySignals.slice(0, 2).join(" / ")}`
-                : "Private signals masked / Consent hold"}
-            </small>
-          </button>
-        ))}
+        {searchableClients.map((client) => {
+          const locked = client.consentStatus !== "Verified";
+          const tierLabel = locked ? "Hold" : client.tier;
+          const tierClass = locked ? "hold" : (client.tier ?? "Silver").toLowerCase();
+          return (
+            <button
+              className={`client-tile tile-tier-${tierClass} ${activeClientId === client.id ? "selected" : ""} ${
+                locked ? "locked" : ""
+              }`}
+              key={client.id}
+              onClick={() => {
+                selectClient(client.id);
+                navigate("/advisor/client");
+              }}
+              type="button"
+            >
+              <header className="tile-head">
+                <span className="tile-name">{displayClientName(client)}</span>
+                <em className={`tier-badge badge-${tierClass}`}>{tierLabel}</em>
+              </header>
+              {!locked && (
+                <div className="tile-score">
+                  <span>Value score</span>
+                  <strong>{client.valueScore}<i>/100</i></strong>
+                </div>
+              )}
+              <p className="tile-summary">
+                {locked
+                  ? "Private signals masked / Consent hold"
+                  : client.tierDescription}
+              </p>
+              {!locked && client.prioritySignals?.length > 0 && (
+                <ul className="tile-signals">
+                  {client.prioritySignals.slice(0, 2).map((signal) => (
+                    <li key={signal}>{signal}</li>
+                  ))}
+                </ul>
+              )}
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -990,7 +1113,12 @@ function AdvisorExperience(props) {
             clientTier={clientTier}
             clientValueScore={clientValueScore}
           />
-          <CareMomentsPanel activeClient={activeClient} careMoments={careMoments} />
+          <CareMomentsPanel
+            activeClient={activeClient}
+            careMoments={careMoments}
+            doneCareMoments={doneCareMoments}
+            pendingCareMoments={pendingCareMoments}
+          />
           <MeetingsPanel clientsState={clientsState} meetings={meetings} />
         </div>
         <div className="content-grid">
@@ -1072,20 +1200,21 @@ function AdvisorExperience(props) {
           consentLocked={consentLocked}
           telegramReady={telegramReady}
         />
-        <div className="content-grid">
-          <TelegramBotConsole
-            activeClient={activeClient}
-            composerMode={composerMode}
-            consentLocked={consentLocked}
-            generatedDraft={generatedDraft}
-            onSend={onApproveDraft}
-            setComposerMode={setComposerMode}
-            setTelegramDraftBody={setTelegramDraftBody}
-            telegramDraftBody={telegramDraftBody}
-            telegramReady={telegramReady}
-            telegramStatus={telegramStatus}
-          />
-        </div>
+        <TelegramBotConsole
+          activeClient={activeClient}
+          activeCareMoment={activeCareMoment}
+          doneCareMoments={doneCareMoments}
+          pendingCareMoments={pendingCareMoments}
+          consentLocked={consentLocked}
+          generatedDraft={generatedDraft}
+          nextActions={nextActions}
+          onSelectMoment={onSelectMoment}
+          onSend={onApproveDraft}
+          setTelegramDraftBody={setTelegramDraftBody}
+          telegramDraftBody={telegramDraftBody}
+          telegramReady={telegramReady}
+          telegramStatus={telegramStatus}
+        />
         <div className="content-grid three">
           <FollowUpManager
             activeTasks={activeTasks}
@@ -1093,6 +1222,7 @@ function AdvisorExperience(props) {
             consentLocked={consentLocked}
             createFollowUp={createFollowUp}
             followUpText={followUpText}
+            recentDoneTasks={recentDoneTasks}
             setFollowUpText={setFollowUpText}
           />
           <RelationshipActionPlan careMoments={careMoments} giftRecommendation={giftRecommendation} />
@@ -1154,16 +1284,16 @@ function AdvisorExperience(props) {
 
   return (
     <div className="page-stack">
-      <section className="command-hero">
-        <div>
+      <section className="command-hero home-hero">
+        <div className="home-hero-copy">
           <p className="eyebrow">Advisor HomePage</p>
-          <h2>Start the day with a voice brief, then turn each signal into the right workspace.</h2>
+          <h2>Start the day with a voice brief, then act on every signal.</h2>
           <p>
-            HomePage reads the agenda, highlights urgent client care, and keeps the existing
-            client cockpit, AI profile, and action workspace ready for advisor review.
+            HomePage surfaces today's agenda, urgent client care, and keeps the client cockpit,
+            AI profile, and action workspace one click away.
           </p>
         </div>
-        <div className="impact-strip">
+        <div className="home-hero-stats">
           <ImpactStat label="Managed Premium" value={businessImpact.managedPremium} />
           <ImpactStat label="Pipeline Value" value={businessImpact.referralPipeline} />
           <ImpactStat label="Blocked Risks" value={businessImpact.blockedRisks} />
@@ -1175,11 +1305,11 @@ function AdvisorExperience(props) {
         meetings={meetings}
         onRunAction={runMorningBriefAction}
       />
-      <div className="content-grid">
+      <div className="content-grid home-row">
         <MeetingsPanel clientsState={clientsState} meetings={meetings} title="Today Agenda" />
         <WeeklyCareMomentsPanel careMoments={allCareMoments} onSelectClient={selectClient} />
       </div>
-      <div className="content-grid">
+      <div className="content-grid home-row home-row-split">
         <RelationshipSuggestionsPanel
           activeClient={activeClient}
           giftRecommendation={giftRecommendation}
@@ -1355,12 +1485,25 @@ function ClientTierPanel({ activeClient, clientTier, clientValueScore }) {
   );
 }
 
-function CareMomentsPanel({ activeClient, careMoments }) {
+function CareMomentsPanel({ activeClient, careMoments, pendingCareMoments, doneCareMoments = [] }) {
+  const pending = Array.isArray(pendingCareMoments) ? pendingCareMoments : careMoments ?? [];
+  const total = pending.length + doneCareMoments.length;
   return (
     <section className="panel care-panel">
-      <PanelHeader title="Care Moments" meta={displayClientName(activeClient)} />
+      <PanelHeader
+        title="Care Moments"
+        meta={total > 0
+          ? `${pending.length} pending - ${doneCareMoments.length} done`
+          : displayClientName(activeClient)}
+      />
       <div className="stack">
-        {careMoments.map((moment) => (
+        {pending.length === 0 && doneCareMoments.length === 0 && (
+          <p className="quiet-text">No care moments detected for {displayClientName(activeClient)}.</p>
+        )}
+        {pending.length === 0 && doneCareMoments.length > 0 && (
+          <p className="quiet-text">All care moments handled for {displayClientName(activeClient)}.</p>
+        )}
+        {pending.map((moment) => (
           <article className={`care-moment priority-${moment.priority.toLowerCase()}`} key={moment.id}>
             <div>
               <span>{moment.type} - {moment.due}</span>
@@ -1370,6 +1513,26 @@ function CareMomentsPanel({ activeClient, careMoments }) {
             <b>{moment.priority}</b>
           </article>
         ))}
+        {doneCareMoments.length > 0 && (
+          <div className="care-done-block">
+            <span className="eyebrow">Completed</span>
+            {doneCareMoments.map((moment) => (
+              <article className="care-moment care-done" key={moment.id}>
+                <div>
+                  <span>✓ {moment.type}</span>
+                  <strong>{moment.title}</strong>
+                  <small>
+                    {moment.progress?.channel ?? "Telegram"} -{" "}
+                    {moment.progress?.sentAt
+                      ? new Date(moment.progress.sentAt).toLocaleString()
+                      : "sent"}
+                  </small>
+                </div>
+                <b>Done</b>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -1383,37 +1546,45 @@ function RelationshipSuggestionsPanel({
 }) {
   const locked = activeClient.consentStatus !== "Verified";
 
+  const telegramReady = activeClient.telegramOptIn && activeClient.telegramChatId;
+  const giftStatus = giftRecommendation.allowed
+    ? { tone: "ok", label: giftRecommendation.budget }
+    : { tone: "block", label: "Blocked" };
+  const telegramStatus = telegramReady
+    ? { tone: "ok", label: "Ready" }
+    : { tone: "warn", label: "Not ready" };
+
   return (
     <section className="panel relationship-suggestions">
       <PanelHeader title="Personalized Suggestions" meta={locked ? "Consent-safe" : relationshipDraft.tone} />
-      <div className="suggestion-grid">
-        <article>
-          <span>Gift guardrail</span>
-          <div>
-            <strong>{giftRecommendation.recommendation}</strong>
-            <p>{giftRecommendation.rationale}</p>
-          </div>
-          <b>{giftRecommendation.allowed ? giftRecommendation.budget : "Blocked"}</b>
+      <div className="suggestion-tiles">
+        <article className="suggestion-tile">
+          <header>
+            <span>Gift guardrail</span>
+            <b className={`chip chip-${giftStatus.tone}`}>{giftStatus.label}</b>
+          </header>
+          <strong>{giftRecommendation.recommendation}</strong>
+          <p>{giftRecommendation.rationale}</p>
         </article>
-        <article>
-          <span>Best slot</span>
-          <div>
-            <strong>{meetingRecommendation.slot}</strong>
-            <p>{meetingRecommendation.reason}</p>
-          </div>
-          <b>{meetingRecommendation.channel}</b>
+        <article className="suggestion-tile">
+          <header>
+            <span>Best slot</span>
+            <b className="chip chip-info">{meetingRecommendation.channel}</b>
+          </header>
+          <strong>{meetingRecommendation.slot}</strong>
+          <p>{meetingRecommendation.reason}</p>
         </article>
-        <article>
-          <span>Telegram bridge</span>
-          <div>
-            <strong>{activeClient.telegramOptIn ? "Client opted in" : "Opt-in needed"}</strong>
-            <p>
-              {activeClient.telegramChatId
-                ? "Chat ID is saved. Advisor can send after reviewing the draft."
-                : "Add telegram_chat_id after the client starts the bot."}
-            </p>
-          </div>
-          <b>{activeClient.telegramOptIn && activeClient.telegramChatId ? "Ready" : "Not ready"}</b>
+        <article className="suggestion-tile">
+          <header>
+            <span>Telegram bridge</span>
+            <b className={`chip chip-${telegramStatus.tone}`}>{telegramStatus.label}</b>
+          </header>
+          <strong>{activeClient.telegramOptIn ? "Client opted in" : "Opt-in needed"}</strong>
+          <p>
+            {activeClient.telegramChatId
+              ? "Chat ID is saved. Advisor can send after reviewing the draft."
+              : "Add telegram_chat_id after the client starts the bot."}
+          </p>
         </article>
       </div>
       <div className="draft-box relationship-draft">
@@ -1450,96 +1621,422 @@ function RelationshipActionPlan({ careMoments, giftRecommendation }) {
   );
 }
 
+const SENSITIVE_SIGNAL_PATTERNS = [
+  /missed premium/i,
+  /lapse/i,
+  /accident/i,
+  /bereave|deceased|passed away|loss of/i,
+  /hospital|illness|surgery|diagnos/i,
+  /complaint|service risk|service issue|dispute/i,
+  /claim denied|claim rejected|fraud/i,
+  /consent (review|due|hold)/i,
+  /compliance hold|disclosure overdue/i,
+  /retrench|laid off|job loss/i,
+];
+
+const SENSITIVE_CARE_TYPES = new Set([
+  "Service risk",
+  "Compliance hold",
+  "Bereavement",
+  "Claim issue",
+]);
+
+function classifyCaseSensitivity({ careMoment, signals = [], lifeEvent, consentVerified }) {
+  const reasons = [];
+
+  if (!consentVerified) {
+    reasons.push("Consent not verified - caring tone only");
+  }
+
+  if (careMoment && SENSITIVE_CARE_TYPES.has(careMoment.type)) {
+    reasons.push(`Care moment is sensitive: ${careMoment.type}`);
+  }
+
+  signals.forEach((signal) => {
+    if (SENSITIVE_SIGNAL_PATTERNS.some((pattern) => pattern.test(signal))) {
+      reasons.push(`Sensitive signal: ${signal}`);
+    }
+  });
+
+  if (lifeEvent && SENSITIVE_SIGNAL_PATTERNS.some((pattern) => pattern.test(lifeEvent))) {
+    reasons.push(`Sensitive life event: ${lifeEvent}`);
+  }
+
+  return {
+    sensitivity: reasons.length > 0 ? "sensitive" : "neutral",
+    sensitiveReasons: reasons,
+  };
+}
+
 function TelegramBotConsole({
   activeClient,
-  composerMode,
+  activeCareMoment,
   consentLocked,
+  doneCareMoments = [],
   generatedDraft,
+  nextActions,
+  onSelectMoment,
   onSend,
-  setComposerMode,
+  pendingCareMoments = [],
   setTelegramDraftBody,
   telegramDraftBody,
   telegramReady,
   telegramStatus,
 }) {
+  const { profile, loading: profileLoading, runAnalysis } = useClientProfile(activeClient);
+  const { tailored, loading: tailoringLoading, error: tailoringError, runTailoring } =
+    useTailoredMessage(activeClient, activeCareMoment?.id);
+
   const checks = [
     ["Consent verified", !consentLocked],
     ["Client opted in", Boolean(activeClient.telegramOptIn)],
     ["Chat ID saved", Boolean(activeClient.telegramChatId)],
-    ["Advisor approval required", true],
+    ["Advisor approval", true],
   ];
+  const checksPassed = checks.filter(([, ok]) => ok).length;
+
+  const todaysCase = useMemo(() => {
+    const careMoment = activeCareMoment
+      ? {
+          type: activeCareMoment.type,
+          due: activeCareMoment.due,
+          title: activeCareMoment.title,
+          action: activeCareMoment.action,
+          reason: activeCareMoment.reason,
+          priority: activeCareMoment.priority,
+        }
+      : null;
+    const signals = activeClient.prioritySignals?.slice(0, 3) ?? [];
+    const lifeEvent = activeClient.lifeEvent ?? null;
+
+    const { sensitivity, sensitiveReasons } = classifyCaseSensitivity({
+      careMoment,
+      signals,
+      lifeEvent,
+      consentVerified: !consentLocked,
+    });
+
+    const isSensitive = sensitivity === "sensitive";
+
+    return {
+      careMoment,
+      nextBestAction: isSensitive ? null : nextActions?.[0]?.title ?? null,
+      prioritySignals: signals,
+      lifeEvent: isSensitive ? null : lifeEvent,
+      caseSensitivity: sensitivity,
+      sensitiveReasons,
+      productHook: isSensitive ? null : activeClient.nextBestOffer ?? null,
+    };
+  }, [activeClient, activeCareMoment, nextActions, consentLocked]);
+
+  const handleTailor = () => {
+    if (!profile) {
+      runAnalysis();
+      return;
+    }
+    runTailoring({ profile, context: todaysCase });
+  };
+
+  useEffect(() => {
+    if (tailored?.body) {
+      setTelegramDraftBody(tailored.body);
+    }
+  }, [tailored?.body, setTelegramDraftBody]);
+
+  useEffect(() => {
+    if (
+      profile &&
+      activeCareMoment?.id &&
+      !tailored &&
+      !tailoringLoading &&
+      !tailoringError &&
+      !consentLocked
+    ) {
+      runTailoring({ profile, context: todaysCase });
+    }
+  }, [
+    profile,
+    activeCareMoment?.id,
+    tailored,
+    tailoringLoading,
+    tailoringError,
+    consentLocked,
+    runTailoring,
+    todaysCase,
+  ]);
+
+  const draftBody = telegramDraftBody || tailored?.body || generatedDraft.body;
+  const draftSubject = tailored?.subject || generatedDraft.subject;
+  const tailoringStatus = tailoringLoading
+    ? `Tailoring for ${activeCareMoment?.type ?? "this moment"}...`
+    : profileLoading
+      ? "Loading AI profile..."
+      : tailored
+        ? `AI-tailored for ${activeCareMoment?.type ?? "this moment"}`
+        : profile
+          ? "Profile ready - click Tailor"
+          : "Generate AI profile first";
 
   return (
-    <section className="panel telegram-console">
-      <PanelHeader title="Auto Recommendation Message Console" meta={telegramReady ? "Ready to send" : "Setup needed"} />
-      <div className="bot-status-card">
+    <section className="panel telegram-console action-console">
+      <header className="console-head">
         <div>
-          <span>Selected client</span>
-          <strong>{displayClientName(activeClient)}</strong>
-          <p>
-            {telegramReady
-              ? "This client can receive advisor-approved Telegram bot messages."
-              : "Complete the readiness checklist before sending through the bot."}
+          <span className="eyebrow">Auto Recommendation Message</span>
+          <h3>Tailored Telegram message for {displayClientName(activeClient)}</h3>
+          <p className="console-sub">
+            Reads the AI behavioural profile (personality, tone, hooks) and today's case to draft a
+            message the advisor approves before sending.
           </p>
         </div>
-        <b className={telegramReady ? "status ready" : "status pending"}>
-          {telegramReady ? "Ready" : "Blocked"}
-        </b>
-      </div>
+        <div className="console-status">
+          <span className={`pill pill-${telegramReady ? "ok" : "warn"}`}>
+            {telegramReady ? "Channel ready" : "Setup needed"}
+          </span>
+          <span className={`pill pill-${tailored ? "ok" : profile ? "info" : "warn"}`}>
+            {tailoringStatus}
+          </span>
+        </div>
+      </header>
 
-      <div className="bot-check-grid">
+      <div className="readiness-row">
         {checks.map(([label, passed]) => (
-          <article key={label} className={passed ? "passed" : "blocked"}>
-            <span>{passed ? "Passed" : "Needed"}</span>
-            <strong>{label}</strong>
-          </article>
+          <span key={label} className={`readiness-chip ${passed ? "ok" : "warn"}`}>
+            <i aria-hidden="true">{passed ? "✓" : "!"}</i>
+            {label}
+          </span>
         ))}
+        <span className="readiness-count">{checksPassed}/{checks.length} checks</span>
       </div>
 
-      <div className="mode-switch bot-mode-switch">
-        <button
-          className="active"
-          onClick={() => setComposerMode("follow-up")}
-          type="button"
-        >
-          Care note
-        </button>
-      </div>
-
-      <div className="bot-chat-preview">
-        <article className="bot-bubble bot">
-          <span>AdvisorFlow Bot</span>
-          <p>{telegramDraftBody || generatedDraft.body}</p>
-        </article>
-        <article className="bot-bubble client">
-          <span>Client</span>
-          <p>Receives this in Telegram after the advisor clicks send.</p>
-        </article>
-      </div>
-
-      <label className="telegram-editor">
-        Edit before sending
-        <textarea
-          onChange={(event) => setTelegramDraftBody(event.target.value)}
-          rows="7"
-          value={telegramDraftBody}
-        />
-      </label>
-
-      {telegramStatus.text && (
-        <p className={`delivery-status delivery-${telegramStatus.tone}`}>
-          {telegramStatus.text}
-        </p>
+      {(pendingCareMoments.length > 0 || doneCareMoments.length > 0) && (
+        <div className="moment-strip">
+          <div className="moment-strip-head">
+            <span className="eyebrow">Care moments</span>
+            <span className="moment-count">
+              {pendingCareMoments.length} pending - {doneCareMoments.length} done
+            </span>
+          </div>
+          <div className="moment-chips">
+            {pendingCareMoments.length === 0 ? (
+              <span className="moment-empty">All care moments handled - send is paused.</span>
+            ) : (
+              pendingCareMoments.map((moment) => {
+                const isActive = activeCareMoment?.id === moment.id;
+                return (
+                  <button
+                    key={moment.id}
+                    type="button"
+                    className={`moment-chip priority-${moment.priority.toLowerCase()} ${isActive ? "active" : ""}`}
+                    onClick={() => onSelectMoment?.(moment.id)}
+                  >
+                    <span>{moment.type} - {moment.due}</span>
+                    <strong>{moment.title}</strong>
+                  </button>
+                );
+              })
+            )}
+          </div>
+          {doneCareMoments.length > 0 && (
+            <details className="moment-done">
+              <summary>Show {doneCareMoments.length} completed</summary>
+              <ul>
+                {doneCareMoments.map((moment) => (
+                  <li key={moment.id}>
+                    <span>✓ {moment.type} - {moment.title}</span>
+                    <small>
+                      {moment.progress?.channel ?? "Telegram"} -{" "}
+                      {moment.progress?.sentAt
+                        ? new Date(moment.progress.sentAt).toLocaleString()
+                        : "sent"}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
       )}
 
-      <button
-        className="primary-action"
-        disabled={telegramStatus.tone === "sending"}
-        onClick={onSend}
-        type="button"
-      >
-        {telegramStatus.tone === "sending" ? "Sending Telegram" : "Send Bot Message And Log"}
-      </button>
+      <div className="composer-grid">
+        <div className="composer-main">
+          <div className="composer-head">
+            <div>
+              <span className="eyebrow">Draft message</span>
+              <strong>{draftSubject}</strong>
+            </div>
+            <button
+              className="secondary-action"
+              disabled={tailoringLoading || profileLoading || consentLocked}
+              onClick={handleTailor}
+              type="button"
+            >
+              {tailoringLoading
+                ? "Tailoring..."
+                : profile
+                  ? tailored
+                    ? "Regenerate with AI"
+                    : "Tailor with AI profile"
+                  : "Generate AI profile"}
+            </button>
+          </div>
+
+          {tailoringError && <p className="ai-profile-error">{tailoringError}</p>}
+
+          <label className="telegram-editor">
+            <span className="editor-label">Edit before sending</span>
+            <textarea
+              onChange={(event) => setTelegramDraftBody(event.target.value)}
+              rows="9"
+              value={draftBody}
+            />
+          </label>
+
+          {telegramStatus.text && (
+            <p className={`delivery-status delivery-${telegramStatus.tone}`}>
+              {telegramStatus.text}
+            </p>
+          )}
+
+          <div className="composer-actions">
+            <span className="composer-meta">
+              Sends via Telegram bot - logs to audit trail
+            </span>
+            <button
+              className="primary-action"
+              disabled={telegramStatus.tone === "sending" || !telegramReady || !activeCareMoment}
+              onClick={onSend}
+              type="button"
+            >
+              {telegramStatus.tone === "sending"
+                ? "Sending..."
+                : !activeCareMoment
+                  ? "No pending moments"
+                  : "Approve & Send"}
+            </button>
+          </div>
+        </div>
+
+        <aside className="composer-side">
+          <div className={`mode-banner mode-${todaysCase.caseSensitivity}`}>
+            <span className="eyebrow">Message mode</span>
+            <strong>
+              {todaysCase.caseSensitivity === "sensitive"
+                ? "Caring only - no product plug"
+                : "Caring + subtle product hook"}
+            </strong>
+            {todaysCase.caseSensitivity === "sensitive" ? (
+              <ul className="bullet-list">
+                {todaysCase.sensitiveReasons.slice(0, 3).map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            ) : todaysCase.productHook ? (
+              <p>Will weave in: <b>{todaysCase.productHook}</b></p>
+            ) : (
+              <p className="muted">No product hook configured for this client.</p>
+            )}
+          </div>
+
+          <div className="side-block">
+            <span className="eyebrow">Tailored from</span>
+            {tailored?.tailoredFrom?.length ? (
+              <ul className="bullet-list">
+                {tailored.tailoredFrom.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">
+                Click <b>Tailor with AI profile</b> to see which personality and tone signals were used.
+              </p>
+            )}
+          </div>
+
+          {profile?.toneGuidance && (
+            <div className="side-block">
+              <span className="eyebrow">Tone guidance</span>
+              <p>{profile.toneGuidance}</p>
+            </div>
+          )}
+
+          {tailored?.momentTopicHooks?.length ? (
+            <div className="side-block">
+              <span className="eyebrow">
+                Topic hooks for {activeCareMoment?.type ?? "this moment"}
+              </span>
+              <ul className="hook-list">
+                {tailored.momentTopicHooks.slice(0, 4).map((hook) => (
+                  <li key={hook}>{hook}</li>
+                ))}
+              </ul>
+              {profile?.topicHooks?.length ? (
+                <details className="hook-fallback">
+                  <summary>Show general profile hooks</summary>
+                  <ul className="hook-list">
+                    {profile.topicHooks.slice(0, 4).map((hook) => (
+                      <li key={hook}>{hook}</li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </div>
+          ) : profile?.topicHooks?.length ? (
+            <div className="side-block">
+              <span className="eyebrow">Topic hooks (general)</span>
+              <ul className="hook-list">
+                {profile.topicHooks.slice(0, 4).map((hook) => (
+                  <li key={hook}>{hook}</li>
+                ))}
+              </ul>
+              <p className="muted" style={{ marginTop: 4 }}>
+                Click Tailor with AI to get hooks specific to this care moment.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="side-block">
+            <span className="eyebrow">Today's case</span>
+            {todaysCase.careMoment ? (
+              <ul className="bullet-list">
+                <li><b>{todaysCase.careMoment.type}:</b> {todaysCase.careMoment.title}</li>
+                {todaysCase.careMoment.reason && (
+                  <li className="muted">{todaysCase.careMoment.reason}</li>
+                )}
+                {todaysCase.careMoment.action && (
+                  <li>Suggested action: {todaysCase.careMoment.action}</li>
+                )}
+              </ul>
+            ) : (
+              <p className="muted">No active care moment selected.</p>
+            )}
+          </div>
+
+          {(todaysCase.lifeEvent || todaysCase.nextBestAction) && (
+            <div className="side-block">
+              <span className="eyebrow">Other client context</span>
+              <ul className="bullet-list">
+                {todaysCase.lifeEvent && (
+                  <li className="muted">Life event: {todaysCase.lifeEvent}</li>
+                )}
+                {todaysCase.nextBestAction && (
+                  <li className="muted">Global next-best action: {todaysCase.nextBestAction}</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {(tailored?.guardrails ?? generatedDraft.disclaimers ?? []).length > 0 && (
+            <div className="side-block guardrail-block">
+              <span className="eyebrow">Guardrails</span>
+              <ul className="bullet-list">
+                {(tailored?.guardrails ?? generatedDraft.disclaimers).slice(0, 3).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </aside>
+      </div>
     </section>
   );
 }
@@ -1703,14 +2200,25 @@ function ActionComposer({
 }
 
 function CompliancePanel({ activeClient, complianceRisk, consentLocked, requestConsentRefresh }) {
+  const level = complianceRisk.level.toLowerCase();
   return (
     <section className="panel compliance-card">
       <PanelHeader title="Compliance Guardrail" meta={complianceRisk.level} />
-      <div className={`risk-meter risk-${complianceRisk.level.toLowerCase()}`}>
-        <span style={{ width: `${complianceRisk.score}%` }} />
+      <div className="compliance-summary">
+        <div className={`compliance-score compliance-${level}`}>
+          <span>Risk score</span>
+          <strong>{complianceRisk.score}</strong>
+          <small>{complianceRisk.level} severity</small>
+        </div>
+        <div className="compliance-headline">
+          <span>Top guardrail</span>
+          <strong>{complianceRisk.reasons[0]}</strong>
+          <div className={`risk-meter risk-${level}`}>
+            <span style={{ width: `${complianceRisk.score}%` }} />
+          </div>
+        </div>
       </div>
-      <strong>{complianceRisk.reasons[0]}</strong>
-      <ul className="compact-list">
+      <ul className="compact-list compliance-list">
         {complianceRisk.reasons.map((reason) => (
           <li key={reason}>{reason}</li>
         ))}
@@ -1864,6 +2372,70 @@ function useClientProfile(activeClient) {
     loading,
     error: entry?.error || "",
     runAnalysis: () => aiProfileStore.generate(activeClient),
+  };
+}
+
+function tailoredCacheKey(clientId, momentId) {
+  return `${clientId}::${momentId ?? "default"}`;
+}
+
+const tailoredMessageStore = {
+  messages: new Map(),
+  inflight: new Map(),
+  listeners: new Set(),
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  },
+  notify() {
+    this.listeners.forEach((listener) => listener());
+  },
+  get(clientId, momentId) {
+    return this.messages.get(tailoredCacheKey(clientId, momentId));
+  },
+  isLoading(clientId, momentId) {
+    return this.inflight.has(tailoredCacheKey(clientId, momentId));
+  },
+  async generate({ client, momentId, profile, context }) {
+    if (!client) return;
+    const key = tailoredCacheKey(client.id, momentId);
+    if (this.inflight.has(key)) return;
+    const promise = generateTailoredTelegramMessage({ client, profile, context })
+      .then((result) => {
+        this.messages.set(key, { result, error: "" });
+      })
+      .catch((err) => {
+        this.messages.set(key, {
+          result: this.messages.get(key)?.result,
+          error: err.message || "Failed to tailor message.",
+        });
+      })
+      .finally(() => {
+        this.inflight.delete(key);
+        this.notify();
+      });
+    this.inflight.set(key, promise);
+    this.notify();
+  },
+};
+
+function useTailoredMessage(activeClient, momentId) {
+  const [, force] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = tailoredMessageStore.subscribe(() => force((n) => n + 1));
+    return unsubscribe;
+  }, []);
+
+  const entry = activeClient ? tailoredMessageStore.get(activeClient.id, momentId) : undefined;
+  const loading = activeClient ? tailoredMessageStore.isLoading(activeClient.id, momentId) : false;
+
+  return {
+    tailored: entry?.result,
+    loading,
+    error: entry?.error || "",
+    runTailoring: ({ profile, context }) =>
+      tailoredMessageStore.generate({ client: activeClient, momentId, profile, context }),
   };
 }
 
@@ -2085,10 +2657,21 @@ function AIProfilePage({ activeClient, consentLocked }) {
   );
 }
 
-function FollowUpManager({ activeTasks, completeTask, consentLocked, createFollowUp, followUpText, setFollowUpText }) {
+function FollowUpManager({
+  activeTasks,
+  completeTask,
+  consentLocked,
+  createFollowUp,
+  followUpText,
+  recentDoneTasks = [],
+  setFollowUpText,
+}) {
   return (
     <section className="panel">
-      <PanelHeader title="Follow-Up Manager" meta={`${activeTasks.length} active`} />
+      <PanelHeader
+        title="Follow-Up Manager"
+        meta={`${activeTasks.length} active - ${recentDoneTasks.length} recently done`}
+      />
       <div className="input-row">
         <input
           aria-label="Follow-up title"
@@ -2102,6 +2685,9 @@ function FollowUpManager({ activeTasks, completeTask, consentLocked, createFollo
         </button>
       </div>
       <div className="stack">
+        {activeTasks.length === 0 && recentDoneTasks.length === 0 && (
+          <p className="quiet-text">No follow-ups yet. Send a care message or add one above.</p>
+        )}
         {activeTasks.map((task) => (
           <article className={`list-row severity-${task.severity}`} key={task.id}>
             <div>
@@ -2113,6 +2699,24 @@ function FollowUpManager({ activeTasks, completeTask, consentLocked, createFollo
             </button>
           </article>
         ))}
+        {recentDoneTasks.length > 0 && (
+          <div className="followup-done-block">
+            <span className="eyebrow">Recently completed</span>
+            {recentDoneTasks.map((task) => (
+              <article className="list-row followup-done" key={task.id}>
+                <div>
+                  <strong>✓ {task.title}</strong>
+                  <span>
+                    {task.completedAt
+                      ? `Completed ${new Date(task.completedAt).toLocaleString()}`
+                      : `Status: ${task.status}`}
+                  </span>
+                </div>
+                <b>Done</b>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

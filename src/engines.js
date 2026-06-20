@@ -17,23 +17,419 @@ function formatRinggit(value) {
   return `RM ${Math.round(value).toLocaleString("en-MY")}`;
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function numberOrZero(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
 function normalizeRisk(score) {
   if (score >= 70) return "High";
   if (score >= 40) return "Medium";
   return "Low";
 }
 
-function getClientName(client) {
-  return client?.consentStatus === "Verified" ? client.name : "Consent-locked client";
-}
-
 function getClientTasks(client, tasks) {
   return tasks.filter((task) => task.clientId === client.id && task.status !== "Done");
+}
+
+function localDateString(date = today) {
+  return date.toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+}
+
+function daysBetween(dateString, referenceDate = today) {
+  const target = new Date(`${dateString}T00:00:00+08:00`);
+  const reference = new Date(`${localDateString(referenceDate)}T00:00:00+08:00`);
+  return Math.round((target - reference) / 86400000);
+}
+
+function daysUntilMonthDay(dateString, referenceDate = today) {
+  if (!dateString) return null;
+  const [, month, day] = dateString.split("-");
+  if (!month || !day) return null;
+  const referenceYear = referenceDate.getFullYear();
+  const reference = new Date(`${localDateString(referenceDate)}T00:00:00+08:00`);
+  let next = new Date(`${referenceYear}-${month}-${day}T00:00:00+08:00`);
+  if (next < reference) {
+    next = new Date(`${referenceYear + 1}-${month}-${day}T00:00:00+08:00`);
+  }
+  return Math.round((next - reference) / 86400000);
+}
+
+function priorityWeight(priority) {
+  if (priority === "High") return 3;
+  if (priority === "Medium") return 2;
+  return 1;
 }
 
 export function daysSince(dateString) {
   const date = new Date(`${dateString}T00:00:00+08:00`);
   return Math.max(0, Math.round((today - date) / 86400000));
+}
+
+export function calculateClientValueScore(client) {
+  if (!client || client.consentStatus !== "Verified") {
+    return {
+      score: 0,
+      factors: [],
+      explanation: ["Consent is not verified, so value scoring stays masked."],
+    };
+  }
+
+  const policyValue = numberOrZero(client.policyValue ?? client.annualPremium);
+  const opportunityValue = numberOrZero(client.opportunityValue);
+  const referralPotential = numberOrZero(client.referralPotential);
+  const engagementUrgency = numberOrZero(client.engagementUrgency);
+  const careUrgency = numberOrZero(client.careUrgency);
+  const relationshipImportance = numberOrZero(client.relationshipImportance);
+
+  const factors = [
+    {
+      label: "Policy value",
+      value: formatRinggit(policyValue),
+      points: clamp((policyValue / 5000) * 1.2, 0, 24),
+      max: 24,
+    },
+    {
+      label: "Opportunity value",
+      value: formatRinggit(opportunityValue),
+      points: clamp(opportunityValue / 20000, 0, 22),
+      max: 22,
+    },
+    {
+      label: "Referral potential",
+      value: `${referralPotential}/100`,
+      points: clamp((referralPotential / 100) * 14, 0, 14),
+      max: 14,
+    },
+    {
+      label: "Engagement urgency",
+      value: `${engagementUrgency}/100`,
+      points: clamp((engagementUrgency / 100) * 14, 0, 14),
+      max: 14,
+    },
+    {
+      label: "Care urgency",
+      value: `${careUrgency}/100`,
+      points: clamp((careUrgency / 100) * 12, 0, 12),
+      max: 12,
+    },
+    {
+      label: "Relationship importance",
+      value: `${relationshipImportance}/100`,
+      points: clamp((relationshipImportance / 100) * 14, 0, 14),
+      max: 14,
+    },
+  ];
+
+  const score = Math.round(factors.reduce((sum, factor) => sum + factor.points, 0));
+  const strongest = [...factors].sort((a, b) => b.points / b.max - a.points / a.max)[0];
+
+  return {
+    score: clamp(score, 0, 100),
+    factors: factors.map((factor) => ({ ...factor, points: Math.round(factor.points) })),
+    explanation: [
+      `${strongest.label} is the strongest tier driver at ${strongest.value}.`,
+      `The score blends book value, opportunity, referral potential, urgency and relationship importance.`,
+    ],
+  };
+}
+
+export function deriveClientTier(scoreOrClient) {
+  const score = typeof scoreOrClient === "number" ? scoreOrClient : calculateClientValueScore(scoreOrClient).score;
+  if (score >= 85) {
+    return {
+      tier: "VIP",
+      score,
+      range: "85-100",
+      description: "Highest value and care priority; proactive relationship planning required.",
+      tone: "platinum",
+    };
+  }
+  if (score >= 70) {
+    return {
+      tier: "Gold",
+      score,
+      range: "70-84",
+      description: "High priority relationship with strong growth or referral potential.",
+      tone: "gold",
+    };
+  }
+  if (score >= 50) {
+    return {
+      tier: "Silver",
+      score,
+      range: "50-69",
+      description: "Steady client value; keep timely, relevant care rhythms.",
+      tone: "silver",
+    };
+  }
+  return {
+    tier: "Bronze",
+    score,
+    range: "0-49",
+    description: "Maintain service quality while monitoring new priority signals.",
+    tone: "bronze",
+  };
+}
+
+export function detectCareMoments(client, tasks = [], referenceDate = today) {
+  if (!client) return [];
+
+  if (client.consentStatus !== "Verified") {
+    return [
+      {
+        id: `${client.id}-consent-care`,
+        type: "Consent",
+        title: "Consent refresh needed before personal care",
+        due: "Today",
+        priority: "High",
+        reason: "Private relationship details and recommendations are masked.",
+        action: "Send a consent refresh note without private planning details.",
+      },
+    ];
+  }
+
+  const moments = [];
+  const birthdayDays = daysUntilMonthDay(client.birthday, referenceDate);
+  const preferredChannel = client.preferredChannel ?? "WhatsApp";
+  const preferredTone = client.preferredTone ?? "Warm";
+
+  if (birthdayDays === 0) {
+    moments.push({
+      id: `${client.id}-birthday-today`,
+      type: "Birthday",
+      title: "Birthday care moment today",
+      due: "Today",
+      priority: "High",
+      reason: `${client.name} prefers a ${preferredTone.toLowerCase()} tone on ${preferredChannel}.`,
+      action: "Send a personal birthday note before any product discussion.",
+    });
+  } else if (birthdayDays !== null && birthdayDays <= 7) {
+    moments.push({
+      id: `${client.id}-birthday-upcoming`,
+      type: "Birthday",
+      title: `Birthday care moment in ${birthdayDays} day(s)`,
+      due: `${birthdayDays} day(s)`,
+      priority: "Medium",
+      reason: "Upcoming birthday is inside the one-week relationship window.",
+      action: "Schedule a short greeting and record the touchpoint.",
+    });
+  }
+
+  if (client.lifeEvent) {
+    moments.push({
+      id: `${client.id}-life-event`,
+      type: "Life event",
+      title: client.lifeEvent,
+      due: "This week",
+      priority: client.careUrgency >= 80 ? "High" : "Medium",
+      reason: "Life-event context should shape the next conversation and message tone.",
+      action: "Acknowledge the event and offer a concise planning check-in.",
+    });
+  }
+
+  const overdueTasks = getClientTasks(client, tasks).filter((task) => task.status === "Overdue" || daysBetween(task.due, referenceDate) < 0);
+  overdueTasks.slice(0, 2).forEach((task) => {
+    moments.push({
+      id: `${task.id}-care-overdue`,
+      type: "Overdue care",
+      title: task.title,
+      due: task.due,
+      priority: "High",
+      reason: "An overdue advisor task can damage trust if it is not handled quickly.",
+      action: "Complete the task or send a service-first update.",
+    });
+  });
+
+  const nextMeeting = client.nextMeeting ? new Date(client.nextMeeting) : null;
+  if (nextMeeting && localDateString(nextMeeting) === localDateString(referenceDate)) {
+    moments.push({
+      id: `${client.id}-meeting-today`,
+      type: "Meeting prep",
+      title: "Relationship-aware meeting prep",
+      due: "Today",
+      priority: "Medium",
+      reason: "A meeting is already scheduled today.",
+      action: "Prepare a one-page agenda using the preferred tone and interests.",
+    });
+  }
+
+  if (daysSince(client.lastContact) >= 14) {
+    moments.push({
+      id: `${client.id}-stale-contact`,
+      type: "Care rhythm",
+      title: "Relationship touchpoint overdue",
+      due: "Today",
+      priority: "Medium",
+      reason: `${daysSince(client.lastContact)} day(s) since last contact.`,
+      action: `Send a ${preferredTone.toLowerCase()} ${preferredChannel} check-in.`,
+    });
+  }
+
+  if (client.prioritySignals.some((signal) => /missed premium|policy review overdue/i.test(signal))) {
+    moments.push({
+      id: `${client.id}-service-sensitive`,
+      type: "Service risk",
+      title: "Service-sensitive follow-up",
+      due: "Today",
+      priority: "High",
+      reason: "Policy service or lapse-sensitive signal detected.",
+      action: "Lead with service help and include required disclosure wording.",
+    });
+  }
+
+  return moments.sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority)).slice(0, 5);
+}
+
+export function recommendGift(client, tierInfo = deriveClientTier(client)) {
+  if (!client || client.consentStatus !== "Verified") {
+    return {
+      allowed: false,
+      recommendation: "Gift recommendation blocked",
+      budget: "RM 0",
+      rationale: "Consent is not verified.",
+      guardrails: ["Do not use private interests or relationship notes until consent is verified."],
+    };
+  }
+
+  const tier = tierInfo.tier ?? "Bronze";
+  const budgetByTier = { VIP: 100, Gold: 50 };
+  const budget = budgetByTier[tier] ?? 0;
+  const interests = client.interests ?? [];
+  const isServiceSensitive = client.prioritySignals.some((signal) => /missed premium|lapse/i.test(signal));
+  const isGiftTier = tier === "VIP" || tier === "Gold";
+
+  let recommendation = "Handwritten thank-you note";
+  if (interests.some((interest) => /golf/i.test(interest)) && interests.some((interest) => /coffee/i.test(interest))) {
+    recommendation = "Premium coffee bean set with a modest golf ball sleeve";
+  } else if (interests.some((interest) => /coffee/i.test(interest))) {
+    recommendation = "Premium coffee bean set";
+  } else if (interests.some((interest) => /family|education/i.test(interest))) {
+    recommendation = "Family photo book voucher capped at modest value";
+  } else if (interests.some((interest) => /wellness|medical/i.test(interest))) {
+    recommendation = "Wellness care pack";
+  }
+
+  return {
+    allowed: isGiftTier && !isServiceSensitive,
+    recommendation: isServiceSensitive
+      ? "No gift until service issue is resolved"
+      : isGiftTier
+        ? recommendation
+        : "Care note only; no gift for this tier",
+    budget: formatRinggit(budget),
+    rationale: isServiceSensitive
+      ? "A lapse or missed-premium signal makes a gift inappropriate until the service matter is handled."
+      : isGiftTier
+        ? `${tier} tier permits a modest, relationship-led gesture based on recorded interests.`
+        : `${tier} tier should receive thoughtful service follow-up without a gift gesture.`,
+    guardrails: [
+      "No cash, cash equivalent, or luxury item.",
+      "Never make the gift conditional on buying, renewing, or referring.",
+      "Gift suggestions are limited to VIP and Gold clients.",
+      "Record estimated value and reason in the client timeline.",
+      "Keep the message relationship-led, not sales-led.",
+    ],
+  };
+}
+
+export function suggestMeetingSlot(client, meetings = [], careMoments = []) {
+  if (!client || client.consentStatus !== "Verified") {
+    return {
+      slot: "Blocked",
+      channel: "Consent refresh",
+      reason: "Consent must be refreshed before scheduling a private planning discussion.",
+      preparation: ["Send a consent refresh note only."],
+    };
+  }
+
+  const scheduled = meetings.find((meeting) => meeting.clientId === client.id);
+  const highCare = careMoments.some((moment) => moment.priority === "High");
+  const channel = client.preferredChannel ?? scheduled?.channel ?? "WhatsApp";
+
+  if (scheduled) {
+    return {
+      slot: scheduled.time,
+      channel: scheduled.channel,
+      reason: `Use the existing ${scheduled.topic.toLowerCase()} appointment.`,
+      preparation: [
+        `Open with ${client.lifeEvent ? client.lifeEvent.toLowerCase() : "the latest relationship note"}.`,
+        `Keep tone ${client.preferredTone?.toLowerCase() ?? "warm"} and channel ${channel}.`,
+      ],
+    };
+  }
+
+  if (/call|phone/i.test(channel)) {
+    return {
+      slot: highCare ? "Tomorrow 08:30" : "This week 08:45",
+      channel: "Phone",
+      reason: "Phone is the preferred channel and morning contact is likely to feel timely.",
+      preparation: ["Prepare a two-minute service agenda.", "Leave a concise voicemail if unanswered."],
+    };
+  }
+
+  if (/email/i.test(channel)) {
+    return {
+      slot: highCare ? "Today 20:15" : "This week 20:15",
+      channel: "Email",
+      reason: "Email is preferred, so an evening summary respects the client's pattern.",
+      preparation: ["Use a clear subject line.", "Keep attachments to one page."],
+    };
+  }
+
+  return {
+    slot: highCare ? "Today 16:30" : "Tomorrow 11:00",
+    channel,
+    reason: `${channel} is the preferred channel for quick relationship care.`,
+    preparation: ["Send one clear question.", "Offer two follow-up windows."],
+  };
+}
+
+export function generateRelationshipMessage(client, { actionTitle, careMoment, giftRecommendation, meetingRecommendation } = {}) {
+  const channel = client?.preferredChannel ?? "WhatsApp";
+
+  if (!client || client.consentStatus !== "Verified") {
+    return {
+      channel,
+      tone: "Consent-safe",
+      subject: "Consent refresh required",
+      body: "Hi, I would like to refresh your consent preferences before we review any private planning details.",
+      guardrails: ["No private interests, life events, or recommendations are used until consent is verified."],
+    };
+  }
+
+  const tone = client.preferredTone ?? "Warm";
+  const opener = channel === "Email" ? `Dear ${client.name},` : `Hi ${client.name},`;
+  const interestText = (client.interests ?? []).filter((interest) => /golf|coffee/i.test(interest)).join(" and ");
+  const momentText = careMoment?.type === "Birthday"
+    ? `Happy birthday. I hope you get a calm moment${interestText ? ` for ${interestText}` : ""}.`
+    : client.lifeEvent
+      ? `I remembered your update: ${client.lifeEvent.toLowerCase()}.`
+      : "I wanted to check in while this is still timely.";
+  const actionText = actionTitle ?? careMoment?.action ?? "set up a short planning check-in";
+  const meetingText = meetingRecommendation
+    ? `A good next step is ${meetingRecommendation.channel} at ${meetingRecommendation.slot}.`
+    : "I can work around your preferred timing.";
+  const giftText = giftRecommendation?.allowed
+    ? `Separately, I noted a modest relationship gesture: ${giftRecommendation.recommendation.toLowerCase()}.`
+    : "";
+
+  return {
+    channel,
+    tone,
+    subject: `${client.name}: ${careMoment?.type ?? "relationship"} follow-up`,
+    body: [opener, momentText, `I suggest we ${actionText.toLowerCase()}. ${meetingText}`, giftText]
+      .filter(Boolean)
+      .join("\n\n"),
+    guardrails: [
+      "For relationship care only; no product recommendation is included.",
+      "Final advice still needs suitability, affordability and consent checks.",
+    ],
+  };
 }
 
 export function scoreClient(client, tasks) {
@@ -46,6 +442,7 @@ export function scoreClient(client, tasks) {
   const gapWeight = Math.min((client.estimatedCoverageGap ?? 0) / 100000, 18);
   const propensityWeight = Math.min((client.propensity ?? 0) / 8, 12);
   const consentPenalty = client.consentStatus === "Review due" ? 16 : 0;
+  const valueWeight = Math.min(calculateClientValueScore(client).score / 5, 20);
 
   return Math.round(
     overdueWeight +
@@ -55,17 +452,27 @@ export function scoreClient(client, tasks) {
       premiumWeight +
       gapWeight +
       propensityWeight +
-      consentPenalty
+      consentPenalty +
+      valueWeight
   );
 }
 
 export function getPriorityClients(clients, tasks) {
   return [...clients]
-    .map((client) => ({
-      ...client,
-      score: scoreClient(client, tasks),
-      openTasks: getClientTasks(client, tasks).length,
-    }))
+    .map((client) => {
+      const valueScore = calculateClientValueScore(client);
+      const tier = deriveClientTier(valueScore.score);
+      return {
+        ...client,
+        score: scoreClient(client, tasks),
+        valueScore: valueScore.score,
+        tier: tier.tier,
+        tierRange: tier.range,
+        tierDescription: tier.description,
+        scoreExplanation: valueScore.explanation,
+        openTasks: getClientTasks(client, tasks).length,
+      };
+    })
     .sort((a, b) => b.score - a.score);
 }
 
@@ -76,9 +483,12 @@ export function buildMorningBrief(clients, tasks, meetings, signals = []) {
   const overdue = tasks.filter((task) => task.status === "Overdue");
   const meetingsToday = meetings.filter((meeting) => !meeting.time.toLowerCase().includes("tomorrow"));
   const highSignals = signals.filter((signal) => signal.confidence >= 90);
+  const priorityLine = priority
+    ? `${priority.name} is the highest verified priority because of ${priority.prioritySignals[0].toLowerCase()} and ${priority.openTasks} active action item(s).`
+    : "No verified client records are available yet; start with consent refreshes before generating private recommendations.";
 
   return [
-    `${priority.name} is the highest verified priority because of ${priority.prioritySignals[0].toLowerCase()} and ${priority.openTasks} active action item(s).`,
+    priorityLine,
     `${meetingsToday.length} client meetings are scheduled today; prepare concise summaries before each appointment.`,
     `${overdue.length} overdue follow-up(s) need attention before new recommendations are issued.`,
     highSignals.length > 0
@@ -105,13 +515,15 @@ export function generateClientBrief(client, tasks = [], signals = [], referrals 
       summary: "Private notes, needs, financial values and recommendations remain masked until consent is verified.",
       highlights: ["Refresh PDPA consent", "Log consent evidence", "Re-run client brief after verification"],
       risk: "High",
-      evidence: client.timeline.map((event) => `${event.date}: ${event.note}`),
+      evidence: ["Consent status is not verified.", "Private timeline evidence is intentionally masked."],
     };
   }
 
   const activeTasks = getClientTasks(client, tasks);
   const clientSignals = signals.filter((signal) => signal.clientId === client.id);
   const clientReferrals = referrals.filter((referral) => referral.clientId === client.id);
+  const valueScore = calculateClientValueScore(client);
+  const tier = deriveClientTier(valueScore.score);
   const topSignal = clientSignals[0]?.signal ?? client.prioritySignals[0];
   const taskSummary =
     activeTasks.length > 0
@@ -126,10 +538,11 @@ export function generateClientBrief(client, tasks = [], signals = [], referrals 
     title: `${client.name} - ${client.segment}`,
     summary: `${client.occupation} in ${client.location}; ${topSignal.toLowerCase()} makes ${client.nextBestOffer.toLowerCase()} timely.`,
     highlights: [
+      `${tier.tier} tier (${valueScore.score}/100): ${tier.description}`,
       `Annual premium ${formatRinggit(client.annualPremium)} with estimated coverage gap ${formatRinggit(client.estimatedCoverageGap ?? 0)}.`,
       taskSummary,
       referralSummary,
-      `Preferred engagement: ${client.memory[0]}`,
+      `Preferred engagement: ${client.preferredChannel ?? "WhatsApp"} in a ${client.preferredTone?.toLowerCase() ?? "warm"} tone.`,
     ],
     risk: normalizeRisk(scoreClient(client, tasks)),
     evidence: client.timeline.slice(0, 4).map((event) => `${event.date}: ${event.type} - ${event.note}`),
@@ -141,6 +554,7 @@ export function generateNextBestActions(client, tasks = [], partners = [], compl
 
   const actions = [];
   const complianceRisk = scoreComplianceRisk(client, tasks, complianceItems);
+  const careMoments = detectCareMoments(client, tasks);
 
   if (client.consentStatus !== "Verified") {
     return [
@@ -154,6 +568,17 @@ export function generateNextBestActions(client, tasks = [], partners = [], compl
       },
     ];
   }
+
+  careMoments.slice(0, 2).forEach((moment) => {
+    actions.push({
+      id: `${moment.id}-action`,
+      title: moment.action,
+      priority: moment.priority,
+      owner: "Advisor",
+      reason: `${moment.title}: ${moment.reason}`,
+      blocked: false,
+    });
+  });
 
   const overdueTask = getClientTasks(client, tasks).find((task) => task.status === "Overdue");
   if (overdueTask) {
@@ -193,7 +618,7 @@ export function generateNextBestActions(client, tasks = [], partners = [], compl
       id: `${client.id}-compliance`,
       title: "Attach suitability and disclosure evidence",
       priority: complianceRisk.level,
-      owner: "Admin",
+      owner: "Advisor",
       reason: complianceRisk.reasons.join(" "),
       blocked: false,
     });
@@ -213,17 +638,25 @@ export function generateDraftMessage(client, action, channel = "WhatsApp") {
   }
 
   const isPremiumRisk = client.prioritySignals.some((signal) => /missed premium|lapse/i.test(signal));
-  const opener = channel === "Email" ? `Dear ${client.name},` : `Hi ${client.name},`;
+  const preferredChannel = channel ?? client.preferredChannel ?? "WhatsApp";
+  const opener = preferredChannel === "Email" ? `Dear ${client.name},` : `Hi ${client.name},`;
   const actionTitle = typeof action === "string" ? action : action?.title ?? client.nextBestOffer;
+  const careMoment = detectCareMoments(client, [])[0];
+  const relationshipLine = careMoment
+    ? `${careMoment.title}: ${careMoment.action.toLowerCase()}.`
+    : client.lifeEvent
+      ? `I remembered your update: ${client.lifeEvent.toLowerCase()}.`
+      : `I kept this ${client.preferredTone?.toLowerCase() ?? "warm"} and concise, as preferred.`;
   const body = [
     opener,
+    relationshipLine,
     `I prepared a short review for ${actionTitle.toLowerCase()} based on your recent updates.`,
     `The main items are ${client.prioritySignals.slice(0, 2).join(" and ").toLowerCase()}, with an estimated planning gap of ${formatRinggit(client.estimatedCoverageGap ?? 0)}.`,
     "Would you like me to walk through the options and assumptions in our next meeting?",
   ];
 
   return {
-    channel,
+    channel: preferredChannel,
     subject: `${client.name}: ${actionTitle}`,
     body: body.join("\n\n"),
     disclaimers: [
@@ -316,7 +749,7 @@ export function summarizeBusinessImpact(impactItems = [], clients = [], referral
   const generated = [
     {
       id: "impact-generated-premium",
-      label: "Managed premium in demo book",
+      label: "Managed premium in active book",
       value: premium,
       unit: "RM",
       narrative: "Visible premium base protected by priority scoring and follow-up controls.",
@@ -343,49 +776,41 @@ export function summarizeBusinessImpact(impactItems = [], clients = [], referral
   }));
 }
 
-export function buildDemoStory({
-  clients = [],
-  tasks = [],
-  meetings = [],
-  signals = [],
-  partners = [],
-  complianceItems = [],
-  impactItems = [],
-  referrals = [],
-} = {}) {
-  const priority = getPriorityClients(
-    clients.filter((client) => client.consentStatus === "Verified"),
-    tasks
-  )[0];
-  const clientBrief = generateClientBrief(priority, tasks, signals, referrals);
-  const actions = generateNextBestActions(priority, tasks, partners, complianceItems).slice(0, 3);
-  const complianceHotspot = clients
-    .map((client) => ({ client, risk: scoreComplianceRisk(client, tasks, complianceItems) }))
-    .sort((a, b) => b.risk.score - a.risk.score)[0];
-  const impact = summarizeBusinessImpact(impactItems, clients, referrals).slice(0, 4);
+export function summarizeRelationshipAdmin(clients = [], tasks = []) {
+  const tierCounts = { VIP: 0, Gold: 0, Silver: 0, Bronze: 0 };
+  const scoredClients = clients
+    .filter((client) => client.consentStatus === "Verified")
+    .map((client) => {
+      const valueScore = calculateClientValueScore(client);
+      const tier = deriveClientTier(valueScore.score);
+      tierCounts[tier.tier] += 1;
+      return {
+        id: client.id,
+        name: client.name,
+        tier: tier.tier,
+        score: valueScore.score,
+      };
+    });
+  const careMoments = clients.flatMap((client) =>
+    detectCareMoments(client, tasks).map((moment) => ({
+      ...moment,
+      clientId: client.id,
+      clientName: client.consentStatus === "Verified" ? client.name : "Consent-locked client",
+    }))
+  );
+  const gifts = clients.map((client) => recommendGift(client, deriveClientTier(calculateClientValueScore(client).score)));
 
-  return [
-    {
-      title: "Start with the AI morning brief",
-      detail: `${meetings.length} scheduled meeting(s), ${signals.length} overnight signal(s), and ${getClientName(priority)} surfaced as the top verified client.`,
+  return {
+    tierCounts,
+    careMomentsToday: careMoments.filter((moment) => moment.due === "Today").length,
+    overdueCare: careMoments.filter((moment) => /overdue|service/i.test(moment.type)).length,
+    giftGuardrailSummary: {
+      allowed: gifts.filter((gift) => gift.allowed).length,
+      blocked: gifts.filter((gift) => !gift.allowed).length,
     },
-    {
-      title: "Open the client cockpit",
-      detail: `${clientBrief.title}: ${clientBrief.summary}`,
-    },
-    {
-      title: "Show next-best actions",
-      detail: actions.map((action) => `${action.priority}: ${action.title}`).join(" | "),
-    },
-    {
-      title: "Prove compliance guardrails",
-      detail: `${getClientName(complianceHotspot.client)} scores ${complianceHotspot.risk.score}/100 because ${complianceHotspot.risk.reasons[0]}`,
-    },
-    {
-      title: "Close on business impact",
-      detail: impact.map((item) => `${item.label}: ${item.displayValue}`).join(" | "),
-    },
-  ];
+    topTierClients: scoredClients.sort((a, b) => b.score - a.score).slice(0, 5),
+    activeCareMoments: careMoments.slice(0, 8),
+  };
 }
 
 export function summarizeAdmin({ clients, tasks, referrals, expenses, complianceItems = [], reviewItems = [] }) {
@@ -395,16 +820,18 @@ export function summarizeAdmin({ clients, tasks, referrals, expenses, compliance
   const flaggedExpenses = expenses.filter((expense) => expense.status === "Flagged").length;
   const highCompliance = complianceItems.filter((item) => item.severity === "High").length;
   const highReviews = reviewItems.filter((item) => item.priority === "High").length;
+  const relationship = summarizeRelationshipAdmin(clients, tasks);
 
   return [
     { label: "Managed premium", value: `RM ${Math.round(totalPremium / 1000)}k`, tone: "blue" },
-    { label: "Priority clients", value: clients.filter((client) => client.prioritySignals.length > 1).length, tone: "green" },
-    { label: "Overdue tasks", value: overdueTasks, tone: overdueTasks > 0 ? "red" : "green" },
+    { label: "VIP clients", value: relationship.tierCounts.VIP, tone: "blue" },
+    { label: "Care moments today", value: relationship.careMomentsToday, tone: relationship.careMomentsToday > 0 ? "red" : "green" },
+    { label: "Overdue care", value: relationship.overdueCare + overdueTasks, tone: relationship.overdueCare + overdueTasks > 0 ? "red" : "green" },
     { label: "Open referrals", value: referrals.filter((referral) => referral.status !== "Closed").length, tone: "blue" },
-    { label: "Pending expenses", value: pendingExpenses + flaggedExpenses, tone: flaggedExpenses > 0 ? "red" : "green" },
+    { label: "Gift guardrails", value: `${relationship.giftGuardrailSummary.allowed}/${relationship.giftGuardrailSummary.blocked}`, tone: relationship.giftGuardrailSummary.blocked > 0 ? "red" : "green" },
     {
       label: "Review queue",
-      value: highCompliance + highReviews,
+      value: highCompliance + highReviews + pendingExpenses + flaggedExpenses,
       tone: highCompliance + highReviews > 0 ? "red" : "green",
     },
   ];
